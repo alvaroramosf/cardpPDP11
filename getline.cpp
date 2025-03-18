@@ -26,6 +26,7 @@ SOFTWARE.
 #include <cstdlib>          // need this include, if you need heap management (malloc, realloc, free)
 #include <Arduino.h>
 #include <M5Core2.h>
+#include <soc/gpio_struct.h>
 
 const uint startLineLength = 8; // the linebuffer will automatically grow for longer lines
 const char eof = 255;           // EOF in stdio.h -is -1, but getchar returns int 255 to avoid blocking

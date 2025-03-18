@@ -8,6 +8,7 @@
 #include <string.h>
 #include "ESPTelnetStream.h"
 #include "beep.h"
+#include <soc/gpio_struct.h>
 
 extern void TStart();
 
@@ -15,7 +16,7 @@ int startup(char* rkfile, char* rlfile, int bootdev);
 using namespace std;
 char* ReadLine(bool fullDuplex = true, char lineBreak = '\n');
 
-string Fnames[64];
+String Fnames[64];
 int SelFile = 0, cntr = 0;
 int BtKey = 0;
 extern int runFlag;
