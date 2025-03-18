@@ -76,4 +76,13 @@ This image includes f77 and the man system along with most well recognised utilt
 Ian Schofield
 Sept 2024
 <br>
+<br>
+The app has had a minor update to correct the unibus mapping logic. The M5Core2 has sufficient PSRAM to provide a nearly full memory map<br>
+as applies to the PDP 11/24. Specifically, the 11/24 has a memory 'hole' in the last 256Kb (128Kw) of the 4M map. This region is mapped into<br>
+the unibus region 'for use by unibus devices'. It is not clear from the manuals as to the effect of this. However, the Ultrix 3.1 image<br>
+now reports realmem = 3932160 which is the same as is reported under simh with the cpu set to 11/24 4m. This additional memory can just be<br>
+squeezed into the 8Mb of PSRAM available in the M5Core2.<br>
+<br>
+Ian Schofield
+March 2025
 
