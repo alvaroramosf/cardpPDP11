@@ -86,4 +86,16 @@ NB: With this amount of memory, RT11 can be a bit slow in booting up. Patience i
 <br>
 Ian Schofield
 March 2025
+<br>
+<br>
+This update is to correct an error due to a change in the M5 Core2 library and to use an SD File for the WiFi credentials.<br>
+The app now expects a file named Wifi.txt on the SD card containing the Wifi SSID and Password in 2 lines of text eg:<br>
+MySSID<br>
+MyPassword<br>
+The change in the M5 Core2 library is just a requirement to initialise the speaker. M5_11_SD.ino line 112.<br>
+<br>
+Ian Schofield
+April 2025
+
+
 
