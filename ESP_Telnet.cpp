@@ -1,12 +1,15 @@
 /* ------------------------------------------------- */
 
 #include "ESPTelnetStream.h"
+#include <stdint.h>
+#include <stdio.h>
+#include "FS.h"
+#include "SD.h"
 
 /* ------------------------------------------------- */
 
 #define SERIAL_SPEED  115200
-#define INFRA_SSID    "<Your SSID>"
-#define INFRA_PSWD    "<Your password>"
+
 //const char noecho[]={0xFF,0xFD,0x2D,0}; // IAC DO SUPPRESS-LOCAL-ECHO Required for Windows telnet client.
 const uint8_t noecho[]={0xFF,0xFB,0x01,0};   // IAC WILL ECHO Seems to work for most clients
 /*
@@ -46,13 +49,18 @@ void telnetReconnect(String ip) {
 
 /* ------------------------------------------------- */
 
-void TStart() {
+void TStart(String ssid, String pswd) {
+
+  char sid[64],psw[64];
 
   Serial.println("ESP Telnet server");
-
   WiFi.setHostname("M5PDP11");
   WiFi.mode(WIFI_STA);
-  WiFi.begin(INFRA_SSID, INFRA_PSWD);
+  memset(sid,0,sizeof(sid));
+  memset(psw,0,sizeof(psw));
+  ssid.toCharArray(sid, ssid.length());
+  pswd.toCharArray(psw, pswd.length());
+  WiFi.begin(sid, psw);
   while(WiFi.status() != WL_CONNECTED) {
     delay(100);
   }

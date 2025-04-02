@@ -10,16 +10,17 @@
 #include "beep.h"
 #include <soc/gpio_struct.h>
 
-extern void TStart();
+extern void TStart(String ssid,String pswd);
 
 int startup(char* rkfile, char* rlfile, int bootdev);
 using namespace std;
 char* ReadLine(bool fullDuplex = true, char lineBreak = '\n');
 
 String Fnames[64];
-int SelFile = 0, cntr = 0;
+int SelFile = 0, cntr = 0, SelRK05, SelRL02;
 int BtKey = 0;
 extern int runFlag;
+String ssid,pswd;
 
 // List contents of SDCard.
 
@@ -62,6 +63,7 @@ void listDir(fs::FS& fs, const char* dirname, uint8_t levels) {
 void eventDisplay(Event& e) {
 	// Serial.printf("%-12s %-18s\r\n", e.typeName(), e.objName());
 	// if (e.type == E_RELEASE || e.type == E_PRESSED) Serial.printf("%5d ms", e.duration);
+  Serial.println("Event");
 	M5.Buttons.draw();
 	if (!(e.type == E_PRESSING))
 		return;
@@ -107,6 +109,7 @@ void setup() {
 	M5.BtnC.setLabel("Reset");
 	M5.BtnA.off = M5.BtnB.off = M5.BtnC.off = { BLUE, WHITE, NODRAW };
 	M5.BtnA.on = M5.BtnB.on = M5.BtnC.on = { BLUE, GREEN, NODRAW };
+  M5.Spk.begin();
 	M5.Buttons.addHandler(eventDisplay);
 	M5.Buttons.draw();
 
@@ -117,7 +120,11 @@ void setup() {
 	Serial.printf("Alloc heap: %d\r\n", ESP.getMaxAllocHeap());
 	Serial.printf("Total PSRAM: %lu\r\n", ESP.getPsramSize());
 	Serial.printf("Free PSRAM: %lu\r\n", ESP.getFreePsram());
-	TStart();
+  File wtxt = SD.open("/Wifi.txt",FILE_READ);
+  ssid=wtxt.readStringUntil('\n');
+  pswd=wtxt.readStringUntil('\n');
+  wtxt.close();
+	TStart(ssid,pswd);
 	listDir(SD, "/", 3);
 	M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
 	M5.Lcd.setCursor(10, 120);
@@ -131,18 +138,23 @@ void setup() {
 	Serial.printf("Enter index of RK05 image:");
 	bfr = ReadLine(true, '\r');
 	if (bfr[0] != '$') {
-		sscanf(bfr, "%d", &SelFile);
+		sscanf(bfr, "%d", &SelRK05);
 		strcpy(rkfile, "/");
-		strcat(rkfile, Fnames[SelFile - 1].c_str());
+		strcat(rkfile, Fnames[SelRK05 - 1].c_str());
 		Serial.printf("\r\nEnter index of RL01/2 image:");
 		bfr = ReadLine(true, '\r');
-		sscanf(bfr, "%d", &SelFile);
+		sscanf(bfr, "%d", &SelRL02);
 		strcpy(rlfile, "/");
-		strcat(rlfile, Fnames[SelFile - 1].c_str());
+		strcat(rlfile, Fnames[SelRL02 - 1].c_str());
 		Serial.printf("\r\nBoot: RK/RL:");
 		bfr = ReadLine(true, '\r');
 		if (bfr[1] == 'l' || bfr[1] == 'L')
 			bootdev = 1;
+    M5.Lcd.fillRect(10, 105, 310, 20, BLACK);
+    M5.Lcd.setCursor(10, 120);
+	  M5.Lcd.print("Booting: ");
+	  M5.Lcd.print(Fnames[bootdev?SelRL02-1:SelRK05-1].c_str());
+	  M5.Lcd.fillCircle(160, 165, 30, GREEN);
 	}
 	else
 	{
@@ -150,7 +162,7 @@ void setup() {
 		strcpy(rkfile, "/Empty_RK05.dsk");
 		strcpy(rlfile, "/Empty_RL01.dsk");
 		M5.Lcd.setCursor(10, 120);
-		M5.Lcd.print("Boot: ");
+		M5.Lcd.print("Booting image: ");
 		M5.Lcd.print(Fnames[SelFile].c_str());
 		if (strcasestr(Fnames[SelFile].c_str(), ".rl")) {
 			strcpy(rlfile, "/");
@@ -164,9 +176,9 @@ void setup() {
 		}
 	}
 	if (bootdev)
-		Serial.printf("\r\nBooting file:%s on RL0:\r\n", rlfile);
+		Serial.printf("\r\nBooting image:%s on RL0:\r\n", rlfile);
 	else
 		Serial.printf("\r\nBooting file:%s on RK0:\r\n", rkfile);
-	M5.Lcd.fillCircle(160, 165, 30, GREEN);
+
 	startup(rkfile, rlfile, bootdev);
 }
