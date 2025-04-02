@@ -82,6 +82,7 @@ as applies to the PDP 11/24. Specifically, the 11/24 has a memory 'hole' in the 
 the unibus region 'for use by unibus devices'. It is not clear from the manuals as to the effect of this. However, the Ultrix 3.1 image<br>
 now reports realmem = 3932160 which is the same as is reported under simh with the cpu set to 11/24 4m. This additional memory can just be<br>
 squeezed into the 8Mb of PSRAM available in the M5Core2.<br>
+NB: With this amount of memory, RT11 can be a bit slow in booting up. Patience is a virtue....<br>
 <br>
 Ian Schofield
 March 2025
