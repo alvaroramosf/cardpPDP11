@@ -109,7 +109,7 @@ void setup() {
 	M5.BtnC.setLabel("Reset");
 	M5.BtnA.off = M5.BtnB.off = M5.BtnC.off = { BLUE, WHITE, NODRAW };
 	M5.BtnA.on = M5.BtnB.on = M5.BtnC.on = { BLUE, GREEN, NODRAW };
-  M5.Spk.begin();
+	M5.Spk.begin();
 	M5.Buttons.addHandler(eventDisplay);
 	M5.Buttons.draw();
 
