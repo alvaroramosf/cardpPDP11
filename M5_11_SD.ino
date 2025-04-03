@@ -63,7 +63,6 @@ void listDir(fs::FS& fs, const char* dirname, uint8_t levels) {
 void eventDisplay(Event& e) {
 	// Serial.printf("%-12s %-18s\r\n", e.typeName(), e.objName());
 	// if (e.type == E_RELEASE || e.type == E_PRESSED) Serial.printf("%5d ms", e.duration);
-  Serial.println("Event");
 	M5.Buttons.draw();
 	if (!(e.type == E_PRESSING))
 		return;
