@@ -11,7 +11,6 @@
 #include "kb11.h"
 #include <M5Core2.h>
 #include <ESP32Time.h>
-#include <>
 
 KB11 cpu;
 int kbdelay = 0;
