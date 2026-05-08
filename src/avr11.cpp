@@ -31,9 +31,7 @@ int RLTYPE;
 // Ctrl+letter is converted to ASCII control code (e.g. Ctrl+C → 0x03).
 // In the emulation phase ; and . are normal characters (not menu navigation).
 
-std::vector<std::string> cmd_history;
-int history_idx = -1;
-std::string edit_buffer = "";
+// History and editing buffer removed to simplify terminal usage.
 
 static void poll_keyboard() {
     M5Cardputer.update();
@@ -46,80 +44,20 @@ static void poll_keyboard() {
     if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
         Keyboard_Class::KeysState status = M5Cardputer.Keyboard.keysState();
 
-        if (current_options.term_mode == MODE_ENHANCED) {
-            // Enhanced Mode Logic
-            for (auto c : status.word) {
-                if (c == ';') {
-                    // History Up
-                    if (!cmd_history.empty() && (history_idx == -1 || history_idx > 0)) {
-                        if (history_idx == -1) history_idx = cmd_history.size() - 1;
-                        else history_idx--;
-                        
-                        // Erase current on screen
-                        for(size_t i=0; i<edit_buffer.length(); i++) {
-                            kl11_rx_char('\b');
-                            delay(5);
-                        }
-                        
-                        edit_buffer = cmd_history[history_idx];
-                        for(char hc : edit_buffer) kl11_rx_char(hc);
-                    }
-                } else if (c == '.') {
-                    // History Down
-                    if (history_idx != -1) {
-                        history_idx++;
-                        
-                        for(size_t i=0; i<edit_buffer.length(); i++) {
-                            kl11_rx_char('\b');
-                            delay(5);
-                        }
-                        
-                        if (history_idx >= (int)cmd_history.size()) {
-                            history_idx = -1;
-                            edit_buffer = "";
-                        } else {
-                            edit_buffer = cmd_history[history_idx];
-                            for(char hc : edit_buffer) kl11_rx_char(hc);
-                        }
-                    }
-                } else {
-                    edit_buffer += c;
-                    kl11_rx_char(c);
-                }
+        // Direct Send Logic (Historical VT100 behavior)
+        for (auto c : status.word) {
+            if (status.ctrl) {
+                char cc = c;
+                if (cc >= 'a' && cc <= 'z') cc -= 0x60;
+                else if (cc >= 'A' && cc <= 'Z') cc -= 0x40;
+                kl11_rx_char(cc);
+            } else {
+                kl11_rx_char(c);
             }
-            if (status.del) {
-                if (!edit_buffer.empty()) {
-                    edit_buffer.pop_back();
-                    kl11_rx_char('\b');
-                }
-            }
-            if (status.enter) {
-                if (!edit_buffer.empty()) {
-                    cmd_history.push_back(edit_buffer);
-                    if (cmd_history.size() > 50) cmd_history.erase(cmd_history.begin());
-                }
-                edit_buffer = "";
-                history_idx = -1;
-                kl11_rx_char('\r');
-            }
-            if (status.tab) kl11_rx_char('\t');
-            
-        } else {
-            // VT100 Mode Logic (Direct Send)
-            for (auto c : status.word) {
-                if (status.ctrl) {
-                    char cc = c;
-                    if (cc >= 'a' && cc <= 'z') cc -= 0x60;
-                    else if (cc >= 'A' && cc <= 'Z') cc -= 0x40;
-                    kl11_rx_char(cc);
-                } else {
-                    kl11_rx_char(c);
-                }
-            }
-            if (status.del)   kl11_rx_char(0x7F);
-            if (status.enter) kl11_rx_char('\r');
-            if (status.tab)   kl11_rx_char('\t');
         }
+        if (status.del)   kl11_rx_char(0x7F);
+        if (status.enter) kl11_rx_char('\r');
+        if (status.tab)   kl11_rx_char('\t');
     }
 }
 

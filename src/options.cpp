@@ -12,26 +12,23 @@ int soft_reset_disk_idx = 0;
 void loadOptions() {
     preferences.begin("pdp11", false);
     current_options.last_disk = preferences.getInt("last_disk", 0);
-    current_options.font_size = (FontSize)preferences.getInt("font_size", FONT_NORMAL);
     current_options.term_color = (TermColor)preferences.getInt("term_color", COLOR_GREEN);
     current_options.brightness = preferences.getInt("brightness", 200);
-    current_options.term_mode = (TermMode)preferences.getInt("term_mode", MODE_VT100);
     preferences.end();
 }
 
 void saveOptions() {
     preferences.begin("pdp11", false);
     preferences.putInt("last_disk", current_options.last_disk);
-    preferences.putInt("font_size", current_options.font_size);
     preferences.putInt("term_color", current_options.term_color);
     preferences.putInt("brightness", current_options.brightness);
-    preferences.putInt("term_mode", current_options.term_mode);
     preferences.end();
 }
 
 void applyOptions() {
     M5Cardputer.Display.setBrightness(current_options.brightness);
-    redraw_terminal();
+    extern void update_canvas_colors();
+    update_canvas_colors();
 }
 
 static void waitForKeyRelease() {
@@ -148,42 +145,7 @@ static void menuDiskImage() {
     }
 }
 
-static void menuFontSize() {
-    int sel = current_options.font_size;
-    const char* items[] = {"Normal (6x8, default)", "Large (Font2)", "Small (TomThumb)"};
-    bool redraw = true;
-    while(true) {
-        if (redraw) {
-            drawMenuHeader("Font Size");
-            drawMenuList(3, sel, items, current_options.font_size);
-            drawMenuFooter("; Up  . Down  Enter Select  Esc Back");
-            redraw = false;
-        }
-        
-        M5Cardputer.update();
-        if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
-            auto status = M5Cardputer.Keyboard.keysState();
-            for (auto ch : status.word) {
-                if (ch == ';') { if (sel > 0) { sel--; redraw = true; } }
-                if (ch == '.') { if (sel < 2) { sel++; redraw = true; } }
-            }
-            if (status.enter) {
-                current_options.font_size = (FontSize)sel;
-                waitForKeyRelease();
-                return;
-            }
-            bool esc_pressed = status.del;
-            for (auto ch : status.word) {
-                if (ch == 27 || ch == '`') esc_pressed = true;
-            }
-            if (esc_pressed) {
-                waitForKeyRelease();
-                return;
-            }
-        }
-        delay(20);
-    }
-}
+// Submenus removed to simplify
 
 static void menuTerminalColor() {
     int sel = current_options.term_color;
@@ -263,42 +225,7 @@ static void menuBrightness() {
     }
 }
 
-static void menuTerminalMode() {
-    int sel = current_options.term_mode;
-    const char* items[] = {"VT100 (Historical, RAW)", "Enhanced (Local Echo/History)"};
-    bool redraw = true;
-    while(true) {
-        if (redraw) {
-            drawMenuHeader("Terminal Mode");
-            drawMenuList(2, sel, items, current_options.term_mode);
-            drawMenuFooter("; Up  . Down  Enter Select  Esc Back");
-            redraw = false;
-        }
-        
-        M5Cardputer.update();
-        if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
-            auto status = M5Cardputer.Keyboard.keysState();
-            for (auto ch : status.word) {
-                if (ch == ';') { if (sel > 0) { sel--; redraw = true; } }
-                if (ch == '.') { if (sel < 1) { sel++; redraw = true; } }
-            }
-            if (status.enter) {
-                current_options.term_mode = (TermMode)sel;
-                waitForKeyRelease();
-                return;
-            }
-            bool esc_pressed = status.del;
-            for (auto ch : status.word) {
-                if (ch == 27 || ch == '`') esc_pressed = true;
-            }
-            if (esc_pressed) {
-                waitForKeyRelease();
-                return;
-            }
-        }
-        delay(20);
-    }
-}
+// Submenus removed to simplify
 
 static void menuBattery() {
     bool redraw = true;
@@ -347,19 +274,17 @@ void openOptionsMenu() {
     EmulatorOptions backup = current_options;
     
     bool redraw = true;
-    int num_items = 8;
+    int num_items = 6;
     while(true) {
         if (redraw) {
             String disk_item = "Disk Image: " + Fnames[current_options.last_disk];
             const char* items[] = {
+                "Exit - Run Emulator",
                 disk_item.c_str(),
-                "Font Size",
-                "Text and Terminal Colour",
+                "Text Colour",
                 "Brightness",
-                "Terminal Mode",
                 "Battery Status",
-                "Save and run emulator",
-                "Exit (without saving)"
+                "Save and Run Emulator"
             };
             
             drawMenuHeader("Main Menu");
@@ -380,13 +305,16 @@ void openOptionsMenu() {
             }
             if (status.enter && !handled) {
                 switch(sel) {
-                    case 0: menuDiskImage(); break;
-                    case 1: menuFontSize(); break;
+                    case 0: // Exit - Run
+                        current_options = backup;
+                        applyOptions();
+                        waitForKeyRelease();
+                        return;
+                    case 1: menuDiskImage(); break;
                     case 2: menuTerminalColor(); break;
                     case 3: menuBrightness(); break;
-                    case 4: menuTerminalMode(); break;
-                    case 5: menuBattery(); break;
-                    case 6: // Save and run
+                    case 4: menuBattery(); break;
+                    case 5: // Save and Run
                         saveOptions();
                         applyOptions();
                         waitForKeyRelease();
@@ -395,11 +323,6 @@ void openOptionsMenu() {
                             request_soft_reset = true;
                             soft_reset_disk_idx = current_options.last_disk;
                         }
-                        return;
-                    case 7: // Exit without saving
-                        current_options = backup;
-                        applyOptions();
-                        waitForKeyRelease();
                         return;
                 }
                 redraw = true;

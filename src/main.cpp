@@ -23,11 +23,10 @@
 // ── Forward declarations ──────────────────────────────────────────────────────
 int startup(char *rkfile, char *rlfile, int bootdev);
 
-using namespace std;
-
 // ── Canvas for PDP-11 terminal output ────────────────────────────────────────
-// Font0 is a 6×8 monospaced bitmap font → ~39 columns × 16 rows at 240×135
 M5Canvas canvas(&M5Cardputer.Display);
+
+using namespace std;
 
 // ── Shared state ─────────────────────────────────────────────────────────────
 String Fnames[64];
@@ -39,33 +38,30 @@ String ssid, pswd;
 static uint32_t lastPush = 0;
 static bool display_dirty = false;
 
-// ── Terminal Buffer ───────────────────────────────────────────────────────────
-std::vector<std::string> term_buffer;
-std::string current_line = "";
+void update_canvas_colors() {
+    uint16_t fg = TFT_GREEN;
+    uint16_t bg = BLACK;
+    if (current_options.term_color == COLOR_AMBER) fg = 0xFFB000;
+    else if (current_options.term_color == COLOR_WHITE) fg = TFT_WHITE;
+    else if (current_options.term_color == COLOR_PAPER) { fg = BLACK; bg = 0xFFFFCC; }
+    
+    canvas.setPaletteColor(0, bg);
+    canvas.setPaletteColor(1, fg);
+    canvas.setTextColor(1, 0);
+}
 
 void console_output_char(char c) {
+    if (c == 0) return;
+    
     if (c == '\a' || c == 0x07) {
         M5Cardputer.Speaker.tone(880, 150);
         return;
     }
     
-    // Add to buffer
-    if (c == '\n') {
-        term_buffer.push_back(current_line);
-        if (term_buffer.size() > 200) term_buffer.erase(term_buffer.begin());
-        current_line = "";
-    } else if (c == '\b') {
-        if (!current_line.empty()) current_line.pop_back();
-    } else if (c != '\r') {
-        current_line += c;
-    }
-    
-    // Output to physical display
     canvas.print(c);
     display_dirty = true;
 }
 
-// Called from the emulator loop periodically so we don't stall the CPU
 void flush_console() {
     if (display_dirty && (millis() - lastPush >= 40)) { // Max 25 FPS
         canvas.pushSprite(0, 0);
@@ -123,50 +119,11 @@ void perform_soft_reset(int new_disk_idx) {
     canvas.setCursor(0, 0);
     canvas.printf("Soft Reset to %s...\r\n", selName);
     canvas.pushSprite(0, 0);
-    delay(500); // Allow user to see message
-    
-    redraw_terminal();
+    delay(500); 
 }
 
-// ── Redraw Terminal ───────────────────────────────────────────────────────────
 void redraw_terminal() {
-    canvas.fillSprite(0);
-    canvas.setCursor(0, 0);
-    
-    // Set Font
-    if (current_options.font_size == FONT_LARGE) canvas.setFont(&fonts::Font2);
-    else if (current_options.font_size == FONT_SMALL) canvas.setFont(&fonts::TomThumb);
-    else canvas.setFont(&fonts::Font0);
-    
-    // Set Color
-    uint16_t fg_color = TFT_GREEN;
-    uint16_t bg_color = BLACK;
-    if (current_options.term_color == COLOR_AMBER) fg_color = 0xFFB000;
-    else if (current_options.term_color == COLOR_WHITE) fg_color = TFT_WHITE;
-    else if (current_options.term_color == COLOR_PAPER) { fg_color = BLACK; bg_color = 0xFFFFCC; }
-    
-    canvas.setPaletteColor(0, bg_color);
-    canvas.setPaletteColor(1, fg_color);
-    canvas.setTextColor(1, 0);
-    
-    // Calculate how many lines can fit
-    int fh = canvas.fontHeight();
-    if (fh == 0) fh = 8;
-    int max_visible_lines = 135 / fh;
-    
-    // Determine starting index
-    int start_idx = 0;
-    if ((int)term_buffer.size() > max_visible_lines - 1) { // -1 to leave room for current_line
-        start_idx = term_buffer.size() - (max_visible_lines - 1);
-    }
-    
-    for (size_t i = start_idx; i < term_buffer.size(); ++i) {
-        canvas.println(term_buffer[i].c_str());
-    }
-    canvas.print(current_line.c_str());
-    
-    canvas.pushSprite(0, 0);
-    display_dirty = false;
+    // No-op - we removed the buffer
 }
 
 // ── Keyboard injection into KL11 ─────────────────────────────────────────────
@@ -222,18 +179,22 @@ void setup() {
     
     M5Cardputer.Display.setBrightness(current_options.brightness);
     M5Cardputer.Display.fillScreen(BLACK);
-    M5Cardputer.Display.setTextSize(1);
-    M5Cardputer.Speaker.setVolume(128);
+    M5Cardputer.Display.setRotation(1);
 
     Serial.begin(115200);
-    // Small delay so CDC-USB serial host can attach
     delay(500);
     Serial.println("Cardputer PDP-11 starting...");
 
     // Canvas for the emulator terminal (1-bit color depth to save ~60KB RAM)
     canvas.setColorDepth(1);
     canvas.createSprite(240, 135);
-    redraw_terminal(); // Initial call to setup font and colors
+    canvas.setTextScroll(true);
+    canvas.setFont(&fonts::Font0);  // 6×8 mono → ~39 col × 16 rows
+    update_canvas_colors();
+    canvas.fillSprite(0);
+    canvas.pushSprite(0, 0);
+    
+    M5Cardputer.Speaker.setVolume(128);
 
     // Mount SD card
     // Cardputer SD SPI pins: SCK=40, MISO=39, MOSI=14, CS=12
@@ -308,10 +269,9 @@ void setup() {
         test.close();
     }
 
-    // Switch display to terminal canvas
+    // Switch display to terminal
     canvas.fillSprite(0);
     canvas.setCursor(0, 0);
-    canvas.setTextColor(1, 0);
     canvas.printf("Booting %s...\r\n", selName);
     canvas.pushSprite(0, 0);
 
