@@ -36,7 +36,7 @@ extern int runFlag;
 String ssid, pswd;
 
 static uint32_t lastPush = 0;
-static bool display_dirty = false;
+bool display_dirty = false;
 
 void update_canvas_colors() {
     uint16_t fg = TFT_GREEN;
@@ -165,6 +165,9 @@ static void scanDiskImages(fs::FS &fs, const char *dirname) {
 
 // ── setup() ──────────────────────────────────────────────────────────────────
 void setup() {
+    // Delay to allow power rails to stabilize (mitigates Cardputer brownout/boot loop)
+    delay(250);
+
     char rkfile[64] = {0};
     char rlfile[64] = {0};
     int  bootdev    = 0;

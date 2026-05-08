@@ -235,16 +235,59 @@ static void menuBattery() {
             uint16_t fg = getMenuColor();
             uint16_t bg = getMenuBgColor();
             M5Cardputer.Display.setTextColor(fg, bg);
-            int bat = M5Cardputer.Power.getBatteryLevel();
+            
             float vol = M5Cardputer.Power.getBatteryVoltage() / 1000.0;
-            bool chg = M5Cardputer.Power.isCharging();
+            
+            // Manual calculation since hardware charging status isn't reliable on Cardputer
+            int pct = (int)((vol - 3.3) / (4.15 - 3.3) * 100);
+            if (pct > 100) pct = 100;
+            if (pct < 0) pct = 0;
             
             M5Cardputer.Display.setCursor(4, 20);
-            M5Cardputer.Display.printf("Level:   %d %%\n", bat);
+            M5Cardputer.Display.printf("Est. Level: %d %%\n", pct);
             M5Cardputer.Display.setCursor(4, 35);
-            M5Cardputer.Display.printf("Voltage: %.2f V\n", vol);
+            M5Cardputer.Display.printf("Voltage:    %.2f V\n", vol);
             M5Cardputer.Display.setCursor(4, 50);
-            M5Cardputer.Display.printf("Status:  %s\n", chg ? "Charging" : "Discharging");
+            M5Cardputer.Display.printf("Est. Level based on voltage.");
+            
+            drawMenuFooter("Esc Back");
+            redraw = false;
+        }
+        
+        M5Cardputer.update();
+        if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
+            auto status = M5Cardputer.Keyboard.keysState();
+            bool esc_pressed = status.del;
+            for (auto ch : status.word) {
+                if (ch == 27 || ch == '`') esc_pressed = true;
+            }
+            if (esc_pressed) {
+                waitForKeyRelease();
+                return;
+            }
+        }
+        delay(20);
+    }
+}
+
+static void menuSystemInfo() {
+    bool redraw = true;
+    while(true) {
+        if (redraw) {
+            drawMenuHeader("System Info");
+            uint16_t fg = getMenuColor();
+            uint16_t bg = getMenuBgColor();
+            M5Cardputer.Display.setTextColor(fg, bg);
+            
+            uint32_t free_ram = ESP.getFreeHeap();
+            uint32_t min_free_ram = ESP.getMinFreeHeap();
+            
+            M5Cardputer.Display.setCursor(4, 20);
+            M5Cardputer.Display.printf("Software Version: 0.1.0\n");
+            M5Cardputer.Display.setCursor(4, 35);
+            M5Cardputer.Display.printf("Free RAM:     %lu KB\n", (unsigned long)(free_ram / 1024));
+            M5Cardputer.Display.setCursor(4, 50);
+            M5Cardputer.Display.printf("Min Free RAM: %lu KB\n", (unsigned long)(min_free_ram / 1024));
             
             drawMenuFooter("Esc Back");
             redraw = false;
@@ -274,17 +317,16 @@ void openOptionsMenu() {
     EmulatorOptions backup = current_options;
     
     bool redraw = true;
-    int num_items = 6;
+    int num_items = 5;
     while(true) {
         if (redraw) {
             String disk_item = "Disk Image: " + Fnames[current_options.last_disk];
             const char* items[] = {
-                "Exit - Run Emulator",
                 disk_item.c_str(),
                 "Text Colour",
                 "Brightness",
-                "Battery Status",
-                "Save and Run Emulator"
+                "System Info",
+                "Battery Status"
             };
             
             drawMenuHeader("Main Menu");
@@ -294,6 +336,8 @@ void openOptionsMenu() {
         }
         
         M5Cardputer.update();
+        bool g0_pressed = M5Cardputer.BtnA.wasPressed();
+        
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
             auto status = M5Cardputer.Keyboard.keysState();
             bool handled = false;
@@ -305,34 +349,32 @@ void openOptionsMenu() {
             }
             if (status.enter && !handled) {
                 switch(sel) {
-                    case 0: // Exit - Run
-                        current_options = backup;
-                        applyOptions();
-                        waitForKeyRelease();
-                        return;
-                    case 1: menuDiskImage(); break;
-                    case 2: menuTerminalColor(); break;
-                    case 3: menuBrightness(); break;
+                    case 0: menuDiskImage(); break;
+                    case 1: menuTerminalColor(); break;
+                    case 2: menuBrightness(); break;
+                    case 3: menuSystemInfo(); break;
                     case 4: menuBattery(); break;
-                    case 5: // Save and Run
-                        saveOptions();
-                        applyOptions();
-                        waitForKeyRelease();
-                        // if disk changed, soft reset
-                        if (backup.last_disk != current_options.last_disk) {
-                            request_soft_reset = true;
-                            soft_reset_disk_idx = current_options.last_disk;
-                        }
-                        return;
                 }
                 redraw = true;
             }
-            if (esc_pressed) {
-                current_options = backup;
+            if (esc_pressed || g0_pressed) {
+                saveOptions();
                 applyOptions();
+                if (backup.last_disk != current_options.last_disk) {
+                    request_soft_reset = true;
+                    soft_reset_disk_idx = current_options.last_disk;
+                }
                 waitForKeyRelease();
                 return;
             }
+        } else if (g0_pressed) {
+            saveOptions();
+            applyOptions();
+            if (backup.last_disk != current_options.last_disk) {
+                request_soft_reset = true;
+                soft_reset_disk_idx = current_options.last_disk;
+            }
+            return;
         }
         delay(20);
     }
