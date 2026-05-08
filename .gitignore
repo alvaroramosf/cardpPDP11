@@ -368,3 +368,4 @@ FodyWeavers.xsd
 /__vm/Compile.vmps.xml
 /__vm/Upload.vmps.xml
 /M5_11_SD.vcxproj.filters
+.pio/
