@@ -153,93 +153,115 @@ when no address has been typed.
 
 ## Example 1 — Hello World in Machine Code
 
-This program outputs `H`, `I` and then halts. It uses the **HALT** instruction
-(`000000`) and direct output to the KL11 console transmitter (`177564`/`177566`).
+This program polls the KL11 transmitter ready bit, then writes `H` and `I`
+directly to the console output register, and halts.
+
+### Instruction encoding note
+
+`MOVB #byte, @#addr` encodes as **`112737`** (not `112037`):
+- `11` = MOVB opcode
+- `27` = source: mode 2 (autoincrement), **R7** (PC) = **immediate** next word
+- `37` = dest:   mode 3 (deferred),      **R7** (PC) = **absolute** next word
+
+`112037` would mean `MOVB (R0)+, @#addr` — reading *from* R0, not from a
+literal byte. That is the bug in the earlier, incorrect listing.
 
 ### The program (starting at address `001000`)
 
-| Address | Octal word | Instruction | Meaning |
-|---------|-----------|-------------|---------|
-| 001000 | 012700 | MOV #imm, R0 | Load immediate into R0 |
-| 001002 | 177566 | (operand) | KL11 transmit buffer address |
-| 001004 | 112037 | MOVB #imm, @#addr | Move immediate byte to absolute address |
-| 001006 | 000110 | (byte value) | ASCII 'H' |
-| 001010 | 177566 | (address) | KL11 XBUF |
-| 001012 | 112037 | MOVB #imm, @#addr | |
-| 001014 | 000111 | (byte value) | ASCII 'I' |
-| 001016 | 177566 | (address) | KL11 XBUF |
-| 001020 | 000000 | HALT | |
+| Address | Octal   | Instruction          | Meaning                              |
+|---------|---------|----------------------|--------------------------------------|
+| 001000  | 105737  | TSTB @#177564        | Test KL11 XCSR bit 7 (TX ready)      |
+| 001002  | 177564  | (addr operand)       | KL11 XCSR address                    |
+| 001004  | 100375  | BPL 001000           | Loop back if bit 7 = 0 (not ready)   |
+| 001006  | 112737  | MOVB #110, @#177566  | Write 'H' (octal 110) to XBUF        |
+| 001010  | 000110  | (immediate byte)     | ASCII 'H' = octal 110                |
+| 001012  | 177566  | (addr operand)       | KL11 XBUF address                    |
+| 001014  | 105737  | TSTB @#177564        | Test XCSR again                      |
+| 001016  | 177564  | (addr operand)       | KL11 XCSR                            |
+| 001020  | 100375  | BPL 001014           | Loop back if not ready               |
+| 001022  | 112737  | MOVB #111, @#177566  | Write 'I' (octal 111) to XBUF        |
+| 001024  | 000111  | (immediate byte)     | ASCII 'I' = octal 111                |
+| 001026  | 177566  | (addr operand)       | KL11 XBUF                            |
+| 001030  | 000000  | HALT                 | Stop                                 |
 
-### Depositing the program via ODT
+> **BPL offset:** at 001004, next PC = 001006, target = 001000.
+> Displacement = (001000 − 001006) / 2 = −3 words = 0375 (8-bit two's complement).
+> `BPL 0375` = `100375`. Same offset applies at 001020 → 001014.
 
-Boot the Cardputer with any disk, then press **G0** to enter ODT.
-Type exactly as shown (`.` = LF key, `CR` = Enter):
+### Depositing via ODT
+
+Boot the Cardputer (any disk), press **G0** to enter ODT.
+Use **`.`** (period) as the LF key to advance to the next word:
 
 ```
-@1000/  000000  012700
-1002/  000000  177566
-1004/  000000  112037
-1006/  000000  000110
-1010/  000000  177566
-1012/  000000  112037
-1014/  000000  000111
-1016/  000000  177566
-1020/  000000  000000 CR
+@1000/ 000000 105737
+1002/ 000000 177564
+1004/ 000000 100375
+1006/ 000000 112737
+1010/ 000000 000110
+1012/ 000000 177566
+1014/ 000000 105737
+1016/ 000000 177564
+1020/ 000000 100375
+1022/ 000000 112737
+1024/ 000000 000111
+1026/ 000000 177566
+1030/ 000000 000000 CR
 @1000G
 HI
 [HALTED: ODT] Esc:Resume G0:Menu
 @
 ```
 
-> **Note:** The KL11 status register at `177564` should have bit 7 set (transmitter
-> ready) before writing to `177566`. On a freshly halted system it is normally ready.
-> If nothing appears, check `177564/` — it should show `177600` or similar (bit 7 set).
-
 ---
 
 ## Example 2 — Echo Loop
 
-This program reads a character from the KL11 receiver (`177560`/`177562`) and
-writes it back to the transmitter (`177564`/`177566`) in an infinite loop.
-Press `G0` to halt it when done.
+This program reads characters from the KL11 receiver and echoes them back.
+Press **G0** to halt.
 
 ### The program
 
-| Address | Octal | Instruction | Meaning |
-|---------|-------|-------------|---------|
-| 001000 | 105737 | TSTB @#177560 | Test RX ready bit (bit 7) |
-| 001002 | 177560 | (address) | KL11 RCSR |
-| 001004 | 100374 | BPL 001000 | Branch back if not ready (bit 7 = 0) |
-| 001006 | 113700 | MOVB @#177562, R0 | Read received char into R0 |
-| 001010 | 177562 | (address) | KL11 RBUF |
-| 001012 | 105737 | TSTB @#177564 | Test TX ready bit |
-| 001014 | 177564 | (address) | KL11 XCSR |
-| 001016 | 100374 | BPL 001012 | Branch back if not ready |
-| 001020 | 110037 | MOVB R0, @#177566 | Transmit the character |
-| 001022 | 177566 | (address) | KL11 XBUF |
-| 001024 | 000737 | BR 001000 | Loop forever |
+| Address | Octal  | Instruction          | Meaning                              |
+|---------|--------|----------------------|--------------------------------------|
+| 001000  | 105737 | TSTB @#177560        | Test KL11 RCSR bit 7 (RX done)       |
+| 001002  | 177560 | (addr operand)       | KL11 RCSR                            |
+| 001004  | 100375 | BPL 001000           | Loop back if no char received        |
+| 001006  | 113700 | MOVB @#177562, R0    | Read received byte into R0           |
+| 001010  | 177562 | (addr operand)       | KL11 RBUF                            |
+| 001012  | 105737 | TSTB @#177564        | Test XCSR bit 7 (TX ready)           |
+| 001014  | 177564 | (addr operand)       | KL11 XCSR                            |
+| 001016  | 100375 | BPL 001012           | Loop back if transmitter busy        |
+| 001020  | 110037 | MOVB R0, @#177566    | Write byte in R0 to XBUF             |
+| 001022  | 177566 | (addr operand)       | KL11 XBUF                            |
+| 001024  | 000765 | BR 001000            | Branch always back to top            |
+
+> **BR offset:** at 001024, next PC = 001026, target = 001000.
+> Displacement = (001000 − 001026) / 2 = −11 words = 0365 (8-bit two's complement).
+> `BR 0365` = `000400 | 0365` = `000765`.
 
 ### Depositing via ODT
 
 ```
 @1000/ 000000 105737
 1002/ 000000 177560
-1004/ 000000 100374
+1004/ 000000 100375
 1006/ 000000 113700
 1010/ 000000 177562
 1012/ 000000 105737
 1014/ 000000 177564
-1016/ 000000 100374
+1016/ 000000 100375
 1020/ 000000 110037
 1022/ 000000 177566
-1024/ 000000 000737 CR
+1024/ 000000 000765 CR
 @1000G
 ```
 
-Now anything you type on the keyboard is echoed back immediately.  
+Now anything you type on the keyboard is echoed back immediately.
 Press **G0** to halt and return to ODT.
 
 ---
+
 
 ## KL11 Register Map (Console Terminal)
 
