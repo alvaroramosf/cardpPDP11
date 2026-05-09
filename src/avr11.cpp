@@ -37,7 +37,7 @@ static void poll_keyboard() {
     M5Cardputer.update();
     
     if (M5Cardputer.BtnA.wasPressed()) {
-        openOptionsMenu();
+        openMonitorMode();
         extern bool display_dirty;
         display_dirty = true;
         return; // Return immediately to let emulator_loop0 handle soft reset if needed

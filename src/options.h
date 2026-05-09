@@ -22,6 +22,7 @@ void loadOptions();
 void saveOptions();
 void applyOptions();
 void openOptionsMenu();
+void openMonitorMode();
 
 // Export total disk count and names from main.cpp
 extern int cntr;

@@ -2,6 +2,9 @@
 #include <Preferences.h>
 #include <M5Cardputer.h>
 #include <M5GFX.h>
+#include "kb11.h"
+
+extern KB11 cpu;
 
 EmulatorOptions current_options;
 Preferences preferences;
@@ -317,7 +320,7 @@ void openOptionsMenu() {
     EmulatorOptions backup = current_options;
     
     bool redraw = true;
-    int num_items = 5;
+    int num_items = 6;
     while(true) {
         if (redraw) {
             String disk_item = "Disk Image: " + Fnames[current_options.last_disk];
@@ -326,7 +329,8 @@ void openOptionsMenu() {
                 "Text Colour",
                 "Brightness",
                 "System Info",
-                "Battery Status"
+                "Battery Status",
+                "System Reset"
             };
             
             drawMenuHeader("Main Menu");
@@ -354,6 +358,11 @@ void openOptionsMenu() {
                     case 2: menuBrightness(); break;
                     case 3: menuSystemInfo(); break;
                     case 4: menuBattery(); break;
+                    case 5:
+                        request_soft_reset = true;
+                        soft_reset_disk_idx = current_options.last_disk;
+                        waitForKeyRelease();
+                        return;
                 }
                 redraw = true;
             }
@@ -375,6 +384,219 @@ void openOptionsMenu() {
                 soft_reset_disk_idx = current_options.last_disk;
             }
             return;
+        }
+        delay(20);
+    }
+}
+
+void openMonitorMode() {
+    extern M5Canvas canvas;
+    extern void flush_console();
+    
+    uint32_t input_val = 0;
+    bool has_input = false;
+    
+    enum OpenType { NONE, MEMORY, REG, PSW_REG };
+    OpenType open_type = NONE;
+    uint32_t open_addr = 0; 
+    bool is_open = false;
+    
+    bool expect_reg = false;
+    
+    canvas.print("\r\n[HALTED: ODT] Esc:Resume G0:Menu\r\n@");
+    canvas.pushSprite(0, 0);
+    
+    while (true) {
+        M5Cardputer.update();
+        
+        if (M5Cardputer.BtnA.wasPressed()) {
+            waitForKeyRelease();
+            openOptionsMenu();
+            cpu.wtstate = false;
+            canvas.print("[RUNNING]\r\n");
+            canvas.pushSprite(0, 0);
+            return;
+        }
+        
+        if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
+            auto status = M5Cardputer.Keyboard.keysState();
+            
+            bool esc_pressed = status.del;
+            std::vector<char> chars;
+            
+            for (auto c : status.word) {
+                if (c == 27 || c == '`') esc_pressed = true;
+                else {
+                    if (status.ctrl) {
+                        char cc = c;
+                        if (cc >= 'a' && cc <= 'z') cc -= 0x60;
+                        else if (cc >= 'A' && cc <= 'Z') cc -= 0x40;
+                        chars.push_back(cc);
+                    } else {
+                        chars.push_back(c);
+                    }
+                }
+            }
+            if (status.enter) chars.push_back('\r');
+            
+            if (esc_pressed) {
+                waitForKeyRelease();
+                cpu.wtstate = false;
+                canvas.print("[RUNNING]\r\n");
+                canvas.pushSprite(0, 0);
+                return;
+            }
+            
+            for (char ch : chars) {
+                char c = toupper(ch);
+                if (c == '.') c = '\n'; // '.' acts as <LF> on Cardputer
+                
+                if (c == 'R' || c == '$') {
+                    canvas.print(c);
+                    expect_reg = true;
+                    has_input = false;
+                    input_val = 0;
+                    if (!is_open) open_type = NONE;
+                }
+                else if (expect_reg) {
+                    canvas.print(c);
+                    expect_reg = false;
+                    if (c >= '0' && c <= '7') {
+                        input_val = c - '0';
+                        has_input = true;
+                        open_type = REG;
+                    } else if (c == 'S') {
+                        has_input = true;
+                        open_type = PSW_REG;
+                    } else {
+                        canvas.print("\r\n?\r\n@");
+                        input_val = 0;
+                        has_input = false;
+                        open_type = NONE;
+                        is_open = false;
+                    }
+                }
+                else if (c >= '0' && c <= '7') {
+                    canvas.print(c);
+                    input_val = (input_val << 3) | (c - '0');
+                    input_val &= 0777777;
+                    has_input = true;
+                    if (open_type == REG && !is_open) {
+                        open_type = NONE;
+                    }
+                }
+                else if (c == '/') {
+                    canvas.print(c);
+                    if (open_type == REG && !is_open) {
+                        open_addr = input_val;
+                    } else if (open_type == PSW_REG && !is_open) {
+                        // addr doesn't matter
+                    } else {
+                        if (has_input) open_addr = input_val;
+                        open_type = MEMORY;
+                    }
+                    
+                    is_open = true;
+                    
+                    if (open_type == REG) {
+                        canvas.printf(" %06o ", cpu.R[open_addr]);
+                    } else if (open_type == PSW_REG) {
+                        canvas.printf(" %06o ", cpu.PSW);
+                    } else {
+                        if (open_addr & 1) { 
+                            canvas.print("\r\n?\r\n@");
+                            open_type = NONE;
+                            is_open = false;
+                        } else {
+                            uint16_t val = cpu.unibus.read16(open_addr);
+                            canvas.printf(" %06o ", val);
+                        }
+                    }
+                    input_val = 0;
+                    has_input = false;
+                }
+                else if (c == '\r') {
+                    canvas.print("\r\n");
+                    if (is_open && has_input) {
+                        if (open_type == REG) cpu.R[open_addr] = input_val & 0177777;
+                        else if (open_type == PSW_REG) cpu.PSW = input_val & 0177777;
+                        else if (open_type == MEMORY) cpu.unibus.write16(open_addr, input_val & 0177777);
+                    }
+                    open_type = NONE;
+                    is_open = false;
+                    input_val = 0;
+                    has_input = false;
+                    canvas.print("@");
+                }
+                else if (c == '\n') {
+                    canvas.print("\r\n");
+                    if (is_open && has_input) {
+                        if (open_type == REG) cpu.R[open_addr] = input_val & 0177777;
+                        else if (open_type == PSW_REG) cpu.PSW = input_val & 0177777;
+                        else if (open_type == MEMORY) cpu.unibus.write16(open_addr, input_val & 0177777);
+                    }
+                    
+                    if (is_open) {
+                        if (open_type == REG) {
+                            open_addr = (open_addr + 1) & 7;
+                            canvas.printf("R%d/ %06o ", open_addr, cpu.R[open_addr]);
+                            input_val = 0;
+                            has_input = false;
+                        } else if (open_type == PSW_REG) {
+                            open_type = NONE;
+                            is_open = false;
+                            input_val = 0;
+                            has_input = false;
+                            canvas.print("@");
+                        } else if (open_type == MEMORY) {
+                            open_addr = (open_addr + 2) & 0777777;
+                            if (open_addr & 1) {
+                                canvas.print("?\r\n@");
+                                open_type = NONE;
+                                is_open = false;
+                            } else {
+                                uint16_t val = cpu.unibus.read16(open_addr);
+                                canvas.printf("%06o/ %06o ", open_addr, val);
+                            }
+                            input_val = 0;
+                            has_input = false;
+                        }
+                    } else {
+                        canvas.print("@");
+                        input_val = 0;
+                        has_input = false;
+                    }
+                }
+                else if (c == 'G') {
+                    canvas.print("G\r\n");
+                    if (has_input) {
+                        cpu.R[7] = input_val & 0177777;
+                    }
+                    cpu.wtstate = false;
+                    canvas.print("[RUNNING]\r\n");
+                    canvas.pushSprite(0, 0);
+                    waitForKeyRelease();
+                    return;
+                }
+                else if (c == 'P') {
+                    canvas.print("P\r\n");
+                    cpu.wtstate = false;
+                    canvas.print("[RUNNING]\r\n");
+                    canvas.pushSprite(0, 0);
+                    waitForKeyRelease();
+                    return;
+                }
+                else {
+                    canvas.print(c);
+                    canvas.print("\r\n?\r\n@");
+                    input_val = 0;
+                    has_input = false;
+                    expect_reg = false;
+                    open_type = NONE;
+                    is_open = false;
+                }
+            }
+            canvas.pushSprite(0, 0);
         }
         delay(20);
     }

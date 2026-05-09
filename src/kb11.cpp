@@ -495,7 +495,10 @@ void KB11::step() {
                     }
                     Serial.printf("HALT: DR: %06o\r\n", displayregister);
                     printstate();
-                    ESP.restart();
+                    {
+                        extern void openMonitorMode();
+                        openMonitorMode();
+                    }
                     return;
                 case 1: // WAIT 000001
                     WAIT();

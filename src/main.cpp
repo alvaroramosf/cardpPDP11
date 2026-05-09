@@ -117,7 +117,7 @@ void perform_soft_reset(int new_disk_idx) {
     
     canvas.fillSprite(0);
     canvas.setCursor(0, 0);
-    canvas.printf("Soft Reset to %s...\r\n", selName);
+    canvas.printf("[SYSTEM RESET] %s...\r\n", selName);
     canvas.pushSprite(0, 0);
     delay(500); 
 }
