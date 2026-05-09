@@ -108,57 +108,93 @@ Connect the Cardputer via USB-C, then:
 pio run -t upload
 ```
 
-### Serial Monitor (debug)
+### Serial Monitor / USB Console
 
 ```bash
 pio device monitor -b 115200
 ```
 
-The serial output shows SD card info, disk image selection, and CPU state
-messages. It also acts as a parallel console terminal (same as the display).
+The Cardputer's USB-C port exposes a **CDC serial port** (USB Serial/JTAG).
+It serves two purposes simultaneously:
+
+1. **Debug output** — SD card info, disk image selection, free RAM, CPU state.
+2. **Parallel PDP-11 console** — every character typed on the physical keyboard
+   is also echoed here, and characters sent from the PC terminal are injected
+   directly into the PDP-11 KL11 receive register. You can use any terminal
+   emulator (e.g. `minicom`, `screen`, PuTTY) at **115200 8N1**.
+
+This means you can operate the PDP-11 entirely from a PC terminal over USB
+without touching the Cardputer keyboard.
 
 ---
 
 ## Controls
 
-### Boot Menu / Options
+### G0 Button — Mode Switching
 
-| Key | Action |
-|-----|--------|
-| `↑` / `↓` (`;` / `.`) | Navigate menu |
-| `Enter` | Confirm selection / save |
-| `G0` button | Toggle between emulator and options menu |
+The orange **G0** button (below the display) is the main mode-switching button.
+It cycles through three states:
 
-### Emulator (PDP-11 terminal)
+```
+  ┌─────────────┐   G0   ┌─────────────┐   G0   ┌─────────────┐
+  │  Emulator   │ ──────▶│  ODT Monitor│ ──────▶│Options Menu │
+  │  (running)  │        │  (CPU halt) │        │             │
+  └─────────────┘        └─────────────┘        └─────────────┘
+         ▲                     │  Esc                  │  Esc / G0
+         └─────────────────────┴───────────────────────┘
+                              Resume
+```
+
+| From state | Press | Result |
+|---|---|---|
+| **Emulator** | `G0` | CPU halts → enters ODT monitor |
+| **ODT Monitor** | `G0` | Opens Options Menu (CPU stays halted) |
+| **ODT Monitor** | `Esc` or `P` | Resumes emulation (CPU un-halts) |
+| **Options Menu** | `Esc` or `G0` | Saves settings, resumes emulation |
+
+### Emulator — PDP-11 Terminal
 
 | Key | Action |
 |-----|--------|
 | Any printable key | Sent directly to PDP-11 console (KL11) |
-| `Ctrl`+`letter` | ASCII control code (e.g. `Ctrl+C` → ETX, `Ctrl+D` → EOT) |
+| `Ctrl`+`letter` | ASCII control code (`Ctrl+C` → ETX, `Ctrl+D` → EOT …) |
 | `Del` | Sends DEL (0x7F) — used as rubout in old Unix |
 | `Enter` | Sends CR (0x0D) |
 | `Tab` | Sends HT (0x09) |
-| `G0` button | Enter ODT monitor mode (halt CPU, inspect/modify registers) |
 
-### ODT Monitor Mode
+### ODT Monitor — Commands
 
-When the CPU is halted (via `G0`), the Cardputer enters an interactive
-ODT-style monitor. You can inspect and modify CPU registers (R0–R7, PS)
-and memory locations using the standard PDP-11 ODT command syntax.
-Press `P` to resume execution or use the menu to select a new disk and reboot.
+The ODT prompt is `@`. Commands follow standard PDP-11 ODT syntax:
+
+| Input | Effect |
+|---|---|
+| `nnnnnn/` | Open memory address *nnnnnn* (octal), display its value |
+| `Rn/` | Open register Rn (R0–R7) |
+| `RS/` | Open Processor Status Word (PSW) |
+| `value CR` | Write *value* to the open location and close it |
+| `value LF` (`.`) | Write *value* and advance to next location |
+| `CR` (empty) | Close location without writing |
+| `G` / `nnnG` | Go: resume from current PC (or set PC=*nnn* first) |
+| `P` | Proceed: resume execution at current PC |
+| `Esc` | Resume execution without changing any register |
+
+See [`docs/ODT_Guide.md`](docs/ODT_Guide.md) for a full command reference
+and worked examples with machine-code programs.
 
 ---
 
 ## Options Menu
 
-Press `G0` at any time during emulation to open the options menu:
+Press `G0` while in ODT monitor to open the options menu (CPU remains halted):
 
 | Option | Values |
 |--------|--------|
-| **Terminal color** | Green · Amber · White · Paper (light mode) |
-| **Brightness** | 5 levels |
-| **Select disk** | Choose from images found on SD |
-| **System info** | Free heap, CPU frequency, SD size |
+| **Disk Image** | Choose from all `.rk05` / `.rl0x` images found on SD |
+| **Text Colour** | Green (phosphor) · Amber · White · Paper (light on dark) |
+| **Brightness** | 5 levels (20 % – 100 %) |
+| **System Info** | Version, free RAM, SD total/used |
+| **Battery Status** | Estimated level and voltage |
+| **System Reset** | Soft-reboot PDP-11 with the currently selected disk |
 
 Settings are saved to **NVS** (non-volatile storage) and restored on next boot.
 
@@ -196,13 +232,16 @@ cardpPDP11/
 
 ## Credits
 
-- **Ian Schofield** ([@Isysxp](https://github.com/Isysxp)) — original PDP-11 emulator
-  for the M5Stack Core2, based on [Pico_1140](https://github.com/Isysxp/Pico_1140).
+- **Ian Schofield** ([@Isysxp](https://github.com/Isysxp)) — M5Stack Core2 port,
+  based on his [Pico_1140](https://github.com/Isysxp/Pico_1140) project (RP2040).
 - **Álvaro Ramos** ([@alvaroramosf](https://github.com/alvaroramosf)) — port to the
   M5Stack Cardputer: PlatformIO migration, keyboard/display adaptation, ODT monitor,
   settings menu, and Cardputer-specific optimizations.
-- The PDP-11 emulation core traces back to the work of many contributors in the
-  retrocomputing community, including Bob Supnik's SIMH project.
+- **Dave Cheney** — [avr11](https://github.com/dchest/avr11), the PDP-11 emulation
+  core for ATmega2560 that this project descends from (via cpp11 → Pico_1140).
+- **Julius Schmidt** — original JavaScript PDP-11 simulator that inspired avr11.
+- Disk images are compatible with **SIMH** (Bob Supnik et al.) but the emulation
+  core is an independent implementation, not a SIMH port.
 
 ---
 

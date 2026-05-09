@@ -2,6 +2,7 @@
 #include <Preferences.h>
 #include <M5Cardputer.h>
 #include <M5GFX.h>
+#include <SD.h>
 #include "kb11.h"
 
 extern KB11 cpu;
@@ -284,13 +285,19 @@ static void menuSystemInfo() {
             
             uint32_t free_ram = ESP.getFreeHeap();
             uint32_t min_free_ram = ESP.getMinFreeHeap();
+            uint64_t sd_total = SD.totalBytes() / (1024ULL * 1024ULL);
+            uint64_t sd_used  = SD.usedBytes()  / (1024ULL * 1024ULL);
             
             M5Cardputer.Display.setCursor(4, 20);
-            M5Cardputer.Display.printf("Software Version: 0.1.0\n");
-            M5Cardputer.Display.setCursor(4, 35);
+            M5Cardputer.Display.printf("Version:      0.1.0\n");
+            M5Cardputer.Display.setCursor(4, 31);
             M5Cardputer.Display.printf("Free RAM:     %lu KB\n", (unsigned long)(free_ram / 1024));
-            M5Cardputer.Display.setCursor(4, 50);
+            M5Cardputer.Display.setCursor(4, 42);
             M5Cardputer.Display.printf("Min Free RAM: %lu KB\n", (unsigned long)(min_free_ram / 1024));
+            M5Cardputer.Display.setCursor(4, 53);
+            M5Cardputer.Display.printf("SD Total:     %llu MB\n", sd_total);
+            M5Cardputer.Display.setCursor(4, 64);
+            M5Cardputer.Display.printf("SD Used:      %llu MB\n", sd_used);
             
             drawMenuFooter("Esc Back");
             redraw = false;
