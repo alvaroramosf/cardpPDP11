@@ -393,6 +393,22 @@ void openMonitorMode() {
     extern M5Canvas canvas;
     extern void flush_console();
     
+    struct Out {
+        void print(const String& s) { canvas.print(s); Serial.print(s); }
+        void print(char c) { canvas.print(c); Serial.print(c); }
+        void print(int i) { canvas.print(i); Serial.print(i); }
+        void printf(const char* fmt, ...) {
+            char buf[128];
+            va_list args;
+            va_start(args, fmt);
+            vsnprintf(buf, sizeof(buf), fmt, args);
+            va_end(args);
+            canvas.print(buf);
+            Serial.print(buf);
+        }
+    } out;
+
+    
     uint32_t input_val = 0;
     bool has_input = false;
     
@@ -403,7 +419,7 @@ void openMonitorMode() {
     
     bool expect_reg = false;
     
-    canvas.print("\r\n[HALTED: ODT] Esc:Resume G0:Menu\r\n@");
+    out.print("\r\n[HALTED: ODT] Esc:Resume G0:Menu\r\n@");
     canvas.pushSprite(0, 0);
     
     while (true) {
@@ -413,17 +429,19 @@ void openMonitorMode() {
             waitForKeyRelease();
             openOptionsMenu();
             cpu.wtstate = false;
-            canvas.print("[RUNNING]\r\n");
+            out.print("[RUNNING]\r\n");
             canvas.pushSprite(0, 0);
             return;
         }
         
+        bool has_chars = false;
+        bool esc_pressed = false;
+        std::vector<char> chars;
+        
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
+            has_chars = true;
             auto status = M5Cardputer.Keyboard.keysState();
-            
-            bool esc_pressed = status.del;
-            std::vector<char> chars;
-            
+            esc_pressed = status.del;
             for (auto c : status.word) {
                 if (c == 27 || c == '`') esc_pressed = true;
                 else {
@@ -438,11 +456,21 @@ void openMonitorMode() {
                 }
             }
             if (status.enter) chars.push_back('\r');
+        }
+        
+        while (Serial.available()) {
+            has_chars = true;
+            char c = Serial.read();
+            if (c == 27) esc_pressed = true;
+            else chars.push_back(c);
+        }
+
+        if (has_chars) {
             
             if (esc_pressed) {
                 waitForKeyRelease();
                 cpu.wtstate = false;
-                canvas.print("[RUNNING]\r\n");
+                out.print("[RUNNING]\r\n");
                 canvas.pushSprite(0, 0);
                 return;
             }
@@ -452,14 +480,14 @@ void openMonitorMode() {
                 if (c == '.') c = '\n'; // '.' acts as <LF> on Cardputer
                 
                 if (c == 'R' || c == '$') {
-                    canvas.print(c);
+                    out.print(c);
                     expect_reg = true;
                     has_input = false;
                     input_val = 0;
                     if (!is_open) open_type = NONE;
                 }
                 else if (expect_reg) {
-                    canvas.print(c);
+                    out.print(c);
                     expect_reg = false;
                     if (c >= '0' && c <= '7') {
                         input_val = c - '0';
@@ -469,7 +497,7 @@ void openMonitorMode() {
                         has_input = true;
                         open_type = PSW_REG;
                     } else {
-                        canvas.print("\r\n?\r\n@");
+                        out.print("\r\n?\r\n@");
                         input_val = 0;
                         has_input = false;
                         open_type = NONE;
@@ -477,7 +505,7 @@ void openMonitorMode() {
                     }
                 }
                 else if (c >= '0' && c <= '7') {
-                    canvas.print(c);
+                    out.print(c);
                     input_val = (input_val << 3) | (c - '0');
                     input_val &= 0777777;
                     has_input = true;
@@ -486,7 +514,7 @@ void openMonitorMode() {
                     }
                 }
                 else if (c == '/') {
-                    canvas.print(c);
+                    out.print(c);
                     if (open_type == REG && !is_open) {
                         open_addr = input_val;
                     } else if (open_type == PSW_REG && !is_open) {
@@ -499,24 +527,24 @@ void openMonitorMode() {
                     is_open = true;
                     
                     if (open_type == REG) {
-                        canvas.printf(" %06o ", cpu.R[open_addr]);
+                        out.printf(" %06o ", cpu.R[open_addr]);
                     } else if (open_type == PSW_REG) {
-                        canvas.printf(" %06o ", cpu.PSW);
+                        out.printf(" %06o ", cpu.PSW);
                     } else {
                         if (open_addr & 1) { 
-                            canvas.print("\r\n?\r\n@");
+                            out.print("\r\n?\r\n@");
                             open_type = NONE;
                             is_open = false;
                         } else {
                             uint16_t val = cpu.unibus.read16(open_addr);
-                            canvas.printf(" %06o ", val);
+                            out.printf(" %06o ", val);
                         }
                     }
                     input_val = 0;
                     has_input = false;
                 }
                 else if (c == '\r') {
-                    canvas.print("\r\n");
+                    out.print("\r\n");
                     if (is_open && has_input) {
                         if (open_type == REG) cpu.R[open_addr] = input_val & 0177777;
                         else if (open_type == PSW_REG) cpu.PSW = input_val & 0177777;
@@ -526,10 +554,10 @@ void openMonitorMode() {
                     is_open = false;
                     input_val = 0;
                     has_input = false;
-                    canvas.print("@");
+                    out.print("@");
                 }
                 else if (c == '\n') {
-                    canvas.print("\r\n");
+                    out.print("\r\n");
                     if (is_open && has_input) {
                         if (open_type == REG) cpu.R[open_addr] = input_val & 0177777;
                         else if (open_type == PSW_REG) cpu.PSW = input_val & 0177777;
@@ -539,7 +567,7 @@ void openMonitorMode() {
                     if (is_open) {
                         if (open_type == REG) {
                             open_addr = (open_addr + 1) & 7;
-                            canvas.printf("R%d/ %06o ", open_addr, cpu.R[open_addr]);
+                            out.printf("R%d/ %06o ", open_addr, cpu.R[open_addr]);
                             input_val = 0;
                             has_input = false;
                         } else if (open_type == PSW_REG) {
@@ -547,48 +575,48 @@ void openMonitorMode() {
                             is_open = false;
                             input_val = 0;
                             has_input = false;
-                            canvas.print("@");
+                            out.print("@");
                         } else if (open_type == MEMORY) {
                             open_addr = (open_addr + 2) & 0777777;
                             if (open_addr & 1) {
-                                canvas.print("?\r\n@");
+                                out.print("?\r\n@");
                                 open_type = NONE;
                                 is_open = false;
                             } else {
                                 uint16_t val = cpu.unibus.read16(open_addr);
-                                canvas.printf("%06o/ %06o ", open_addr, val);
+                                out.printf("%06o/ %06o ", open_addr, val);
                             }
                             input_val = 0;
                             has_input = false;
                         }
                     } else {
-                        canvas.print("@");
+                        out.print("@");
                         input_val = 0;
                         has_input = false;
                     }
                 }
                 else if (c == 'G') {
-                    canvas.print("G\r\n");
+                    out.print("G\r\n");
                     if (has_input) {
                         cpu.R[7] = input_val & 0177777;
                     }
                     cpu.wtstate = false;
-                    canvas.print("[RUNNING]\r\n");
+                    out.print("[RUNNING]\r\n");
                     canvas.pushSprite(0, 0);
                     waitForKeyRelease();
                     return;
                 }
                 else if (c == 'P') {
-                    canvas.print("P\r\n");
+                    out.print("P\r\n");
                     cpu.wtstate = false;
-                    canvas.print("[RUNNING]\r\n");
+                    out.print("[RUNNING]\r\n");
                     canvas.pushSprite(0, 0);
                     waitForKeyRelease();
                     return;
                 }
                 else {
-                    canvas.print(c);
-                    canvas.print("\r\n?\r\n@");
+                    out.print(c);
+                    out.print("\r\n?\r\n@");
                     input_val = 0;
                     has_input = false;
                     expect_reg = false;

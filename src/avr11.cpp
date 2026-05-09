@@ -43,6 +43,10 @@ static void poll_keyboard() {
         return; // Return immediately to let emulator_loop0 handle soft reset if needed
     }
     
+    while (Serial.available()) {
+        kl11_rx_char(Serial.read());
+    }
+    
     if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
         Keyboard_Class::KeysState status = M5Cardputer.Keyboard.keysState();
 
