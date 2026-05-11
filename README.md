@@ -113,8 +113,9 @@ extensions. The disk selection menu allows navigating these subdirectories.
 ### Single Disk Boot
 1. Select your root image (e.g., `unix0_v6_rk_DL.rk05`) in **RK05 Drive 0**.
 2. Exit the menu to boot.
-3. At the `@` prompt, type `unix` (or just press Enter if configured) and press Enter.
-4. When the `#` prompt appears, you are in!
+3. At the `@` prompt, type `rkunix` and press Enter.
+4. When the `login:` prompt appears, type `root` and press Enter.
+5. When the `#` prompt appears, you are in!
 
 ### Multi-Disk Configuration
 To access extra volumes (like `/usr` or `/doc` from SIMH distributions):
