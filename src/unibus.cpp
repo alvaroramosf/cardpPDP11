@@ -25,12 +25,16 @@ void UNIBUS::write16(uint32_t a, const uint16_t v) {
 		trap(INTBUS);
 	}
 	if (!(cpu.mmu.SR[3] & 020) && a < MEMSIZE) {
-		core_pages[a >> 15][(a & 0x7FFF) >> 1] = v;
+		int page = a >> 15;
+		if (!core_pages[page]) { trap(INTBUS); return; }
+		core_pages[page][(a & 0x7FFF) >> 1] = v;
 		return;
 	}
 
 	if ((cpu.mmu.SR[3] & 020) && a < MEMSIZE22) {
-		core_pages[a >> 15][(a & 0x7FFF) >> 1] = v;
+		int page = a >> 15;
+		if (!core_pages[page]) { trap(INTBUS); return; }
+		core_pages[page][(a & 0x7FFF) >> 1] = v;
 		return;
 	}
 
@@ -125,12 +129,15 @@ uint16_t UNIBUS::read16(uint32_t a) {
 	}
 
 	if (!(cpu.mmu.SR[3] & 020) && a < MEMSIZE) {
-
-		return core_pages[a >> 15][(a & 0x7FFF) >> 1];
+		int page = a >> 15;
+		if (!core_pages[page]) { trap(INTBUS); return 0; }
+		return core_pages[page][(a & 0x7FFF) >> 1];
 	}
 
 	if ((cpu.mmu.SR[3] & 020) && a < MEMSIZE22) {
-		return core_pages[a >> 15][(a & 0x7FFF) >> 1];
+		int page = a >> 15;
+		if (!core_pages[page]) { trap(INTBUS); return 0; }
+		return core_pages[page][(a & 0x7FFF) >> 1];
 	}
 
 	if (a < IOBASE_18BIT && !(cpu.mmu.SR[3] & 020)) {
