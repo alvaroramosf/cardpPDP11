@@ -71,15 +71,9 @@ static void poll_keyboard() {
 
 // ── PDP-11 setup ──────────────────────────────────────────────────────────────
 // Named setup_pdp11 to avoid collision with Arduino's setup() in main.cpp.
-static void setup_pdp11(char *rkfile, char *rlfile, int bootdev) {
-    if (cpu.unibus.rk11.rk05)
-        return;
-    cpu.unibus.rk11.rk05 = SD.open(rkfile, "rb+");
-    cpu.unibus.rl11.rl02  = SD.open(rlfile, "rb+");
-    Serial.printf("rk05 open: %s\r\n", cpu.unibus.rk11.rk05 ? "OK" : "FAILED");
-    Serial.printf("rl02 open: %s\r\n", cpu.unibus.rl11.rl02 ? "OK" : "FAILED");
+static void setup_pdp11(int bootdev) {
     RLTYPE = 035;
-    if (strcasestr(rlfile, ".rl02"))
+    if (current_options.rl_disks[0] >= 0 && strcasestr(Fnames[current_options.rl_disks[0]].c_str(), ".rl02"))
         RLTYPE = 0235;
     clkdiv  = (uint64_t)1000000 / (uint64_t)60;
     systime = millis();
@@ -108,8 +102,8 @@ void emulator_loop() {
 void emulator_loop0() {
     while (true) {
         if (request_soft_reset) {
-            extern void perform_soft_reset(int);
-            perform_soft_reset(soft_reset_disk_idx);
+            extern void perform_soft_reset();
+            perform_soft_reset();
             request_soft_reset = false;
         }
 
@@ -145,8 +139,8 @@ void emulator_loop0() {
 }
 
 // startup() is called from main.cpp's setup() and never returns.
-int startup(char *rkfile, char *rlfile, int bootdev) {
-    setup_pdp11(rkfile, rlfile, bootdev);
+int startup(int bootdev) {
+    setup_pdp11(bootdev);
     runFlag++;
     while (1)
         emulator_loop();

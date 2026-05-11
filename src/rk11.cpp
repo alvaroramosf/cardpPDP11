@@ -21,7 +21,11 @@ uint16_t RK11::read16(const uint32_t a) {
     switch (a) {
     case 0777400:
         // 777400 Drive Status
-        return rkds;
+        if (drive <= 3 && rk05[drive]) {
+            return (rkds & ~0160000) | (drive << 13);
+        } else {
+            return (drive << 13);
+        }
     case 0777402:
         // 777402 Error Register
         return rker;
@@ -72,6 +76,14 @@ void RK11::step() {
     case 2: // read
     case 3:
         rknotready();
+        if (drive > 3 || !rk05[drive]) {
+            rker |= 0x80; // NXD
+            rkready();
+            if (rkcs & (1 << 6)) {
+                cpu.interrupt(INTRK, 5);
+            }
+            return;
+        }
         seek();
         readwrite();
         return;
@@ -80,10 +92,12 @@ void RK11::step() {
         [[fallthrough]];
     case 4: // Seek (and drive reset) - complete immediately
         rknotready();
-        if (drive != 0) {
+        if (drive > 3 || !rk05[drive]) {
             rker |= 0x80; // NXD
             rkready();
-        	cpu.interrupt(INTRK, 5);
+            if (rkcs & (1 << 6)) {
+        	    cpu.interrupt(INTRK, 5);
+            }
             return;
         }
         seek();
@@ -139,7 +153,7 @@ void RK11::readwrite() {
     
     // If reading, read the whole sector first
     if (!w) {
-        rk05.read(secbuf, 512);
+        rk05[drive].read(secbuf, 512);
     }
 
     for (i = 0; i < 256 && rkwc != 0; i++) {
@@ -162,8 +176,8 @@ void RK11::readwrite() {
     // If writing, write the whole sector
     if (w) {
         // secbuf is zero-initialized, so remaining words up to 256 are naturally 0
-        rk05.write(secbuf, 512);
-        rk05.flush();
+        rk05[drive].write(secbuf, 512);
+        rk05[drive].flush();
     }
 
     sector++;
@@ -179,13 +193,13 @@ void RK11::readwrite() {
             }
         }
     }
-    rkda = (cylinder << 5) | (surface << 4) | sector;
+    rkda = (drive << 13) | (cylinder << 5) | (surface << 4) | sector;
 }
 
 void RK11::seek() {
     const uint32_t pos = (cylinder * 24 + surface * 12 + sector) * 512;
-    rkda = (cylinder << 5) | (surface << 4) | sector;
-    if (!rk05.seek(pos))
+    rkda = (drive << 13) | (cylinder << 5) | (surface << 4) | sector;
+    if (!rk05[drive].seek(pos))
         Serial.printf("RK05: Seek fail\r\n");;
 //	if (FR_OK != (fr = f_lseek(&rk05, pos))) {
 //		Serial.printf(("rkstep: failed to seek\r\n"));

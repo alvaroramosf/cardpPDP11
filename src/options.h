@@ -16,7 +16,8 @@ enum CpuModel {
 };
 
 struct EmulatorOptions {
-    int last_disk;
+    int rk_disks[4];  // indices into Fnames, -1 means empty
+    int rl_disks[4];  // indices into Fnames, -1 means empty
     TermColor term_color;
     int brightness;
     CpuModel cpu_model;
@@ -35,6 +36,6 @@ extern String Fnames[64];
 
 // Notify main that soft reset is requested
 extern bool request_soft_reset;
-extern int soft_reset_disk_idx;
+extern bool request_soft_reset;
 
 #endif // OPTIONS_H

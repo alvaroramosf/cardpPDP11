@@ -159,6 +159,12 @@ void RL11::step()
     drive = (RLCS >> 8) & 3;
     RLCS &= ~1;
 
+    if (!rl02[drive]) {
+        RLCS |= RLOPI | RLCERR;
+        rlready();
+        return;
+    }
+
     bool w;
     switch ((RLCS & 017) >> 1)
     {
@@ -189,7 +195,7 @@ retry:
         wc = maxwc;
     RLWC = 65536 - wc;
     // Serial.printf("Disk: Loc:%08o WC:%06o BA:%08o\r\n", GET_DA(RLDA) * 256, wc,RLBA);
-    if (!rl02.seek(pos))
+    if (!rl02[drive].seek(pos))
         Serial.printf("RL02: Seek fail\r\n");
     uint16_t i=0;
     uint16_t val;
@@ -203,7 +209,7 @@ retry:
         int bytes_this_chunk = words_this_chunk * 2;
 
         if (!w) {
-            rl02.read(buf, bytes_this_chunk);
+            rl02[drive].read(buf, bytes_this_chunk);
             for (int j = 0; j < words_this_chunk; j++) {
                 val = buf[j*2] | (buf[j*2+1] << 8);
                 cpu.unibus.write16(RLBA22, val);
@@ -218,7 +224,7 @@ retry:
                 RLBA += 2;
                 RLBA22 += 2;
             }
-            rl02.write(buf, bytes_this_chunk);
+            rl02[drive].write(buf, bytes_this_chunk);
         }
 
         RLWC = (uint16_t)(RLWC + words_this_chunk);
@@ -230,8 +236,8 @@ retry:
     if (w && !RLMP) {                   // If write AND IO complete (RLMP==0) fill remaining words in sector with zeros.
         if (i)
             for (i=i;i<256;i++)
-                rl02.write((uint8_t*)&val, 2);
-        rl02.flush();
+                rl02[drive].write((uint8_t*)&val, 2);
+        rl02[drive].flush();
     }
     if (RLMP) {                         // Has RLMP (WC) gone to zero. If not, move to next track and continue
         RLDA = (RLDA + 0100) & ~077;
@@ -264,6 +270,11 @@ void RL11::write16(uint32_t a, uint16_t v)
                 break;
             case 2:                     // Get status
                 RLCS &= 01777;          // Clear error flags
+                if (!rl02[RLUNIT]) {
+                    RLCS |= RLOPI | RLCERR;
+                    rlready();
+                    break;
+                }
                 if (RLDA & 2) {         // Do get status
                     RLMP = RLTYPE;        // Heads out/On track/RL02
                     rlready();          // Immediate ready
@@ -271,9 +282,19 @@ void RL11::write16(uint32_t a, uint16_t v)
                 break;
             case 3:                     // Seek ... just set ready
                 RLCS &= 01777;          // Clear error flags
+                if (!rl02[RLUNIT]) {
+                    RLCS |= RLOPI | RLCERR;
+                    rlready();
+                    break;
+                }
                 rlready();
                 break;
             case 4:                     // Read header
+                if (!rl02[RLUNIT]) {
+                    RLCS |= RLOPI | RLCERR;
+                    rlready();
+                    break;
+                }
                 RLMP = RLDA;
                 rlready();
                 break;

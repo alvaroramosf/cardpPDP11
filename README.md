@@ -102,11 +102,34 @@ Format a MicroSD card as **FAT32** and create the following structure:
 ```
 
 The firmware scans `/pdp11/` **recursively** for files with `.rk05` or `.rl0x`
-extensions. Subdirectory names are shown in the disk selection menu.
+extensions. The disk selection menu allows navigating these subdirectories.
 
-> The `Empty_RK05.dsk` placeholder is only needed if you mix RK and RL images
-> and want to avoid an "Cannot open" error. You can skip it if all your images
-> are of one type.
+> **Tip:** Organize your images by OS or CPU model (e.g., `/pdp11/pdp11-40/unix_v6/`).
+
+---
+
+## Booting UNIX V6
+
+### Single Disk Boot
+1. Select your root image (e.g., `unix0_v6_rk_DL.rk05`) in **RK05 Drive 0**.
+2. Exit the menu to boot.
+3. At the `@` prompt, type `unix` (or just press Enter if configured) and press Enter.
+4. When the `#` prompt appears, you are in!
+
+### Multi-Disk Configuration
+To access extra volumes (like `/usr` or `/doc` from SIMH distributions):
+1. In **Emulation Settings**, mount the root disk in **Drive 0**.
+2. Mount the additional volumes in **Drive 1**, **Drive 2**, etc.
+3. Boot into UNIX normally.
+4. Create the device nodes (if they don't exist) and mount them:
+   ```bash
+   # Create device for Drive 1 (Block device 0, minor 1)
+   /etc/mknod /dev/rk1 b 0 1
+   
+   # Mount it to /usr
+   /etc/mount /dev/rk1 /usr
+   ```
+5. You can now access the files in `/usr`.
 
 ---
 
@@ -189,7 +212,7 @@ When the PDP-11 executes a `HALT` instruction in kernel mode:
 
 | Option | Values |
 |--------|--------|
-| **Disk Image** | All `.rk05` / `.rl0x` images found under `/pdp11/` |
+| **Disk Image** | Navigate folders and select `.rk05` / `.rl0x` images |
 | **CPU Model** | PDP-11/40 (18-bit) · PDP-11/23 (22-bit F-11) |
 | **Text Colour** | Green (phosphor) · Amber · White · Paper |
 | **Brightness** | 5 levels (20 % – 100 %) |
@@ -233,6 +256,13 @@ cardpPDP11/
 ---
 
 ## Changelog
+
+### v0.1.3
+- **feat:** Multi-disk support for RK11 (connect up to 4 RK05 drives simultaneously).
+- **feat:** Folder navigation in the disk selection menu (recursive browser).
+- **feat:** G0 button exit propagation — pressing G0 now exits back to the emulator from any submenu.
+- **fix:** Corrected RKDS (status) and RKDA (drive selection) logic for multi-drive compatibility.
+- **refactor:** Reorganized UNIX V6 images to separate 11/40 and 11/45 (Supervisor mode) versions.
 
 ### v0.1.2
 - **feat:** CPU model selector — choose between PDP-11/40 (18-bit) and PDP-11/23 (22-bit F-11) from the Options Menu

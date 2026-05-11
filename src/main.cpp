@@ -21,7 +21,7 @@
 #include "kb11.h"
 
 // ── Forward declarations ──────────────────────────────────────────────────────
-int startup(char *rkfile, char *rlfile, int bootdev);
+int startup(int bootdev);
 
 // ── Canvas for PDP-11 terminal output ────────────────────────────────────────
 M5Canvas canvas(&M5Cardputer.Display);
@@ -73,39 +73,28 @@ void flush_console() {
 // ── Soft Reset ────────────────────────────────────────────────────────────────
 extern KB11 cpu; // from kb11.h
 
-void perform_soft_reset(int new_disk_idx) {
-    // Determine files for the new disk
-    char rkfile[64] = {0};
-    char rlfile[64] = {0};
-    int bootdev = 0;
-    
-    const char *selName = Fnames[new_disk_idx].c_str();
-    strcpy(rkfile, "/pdp11/Empty_RK05.dsk");
-    strcpy(rlfile, "/pdp11/Empty_RL02.dsk");
-    
-    if (strcasestr(selName, ".rk")) {
-        snprintf(rkfile, sizeof(rkfile), "/pdp11/%s", selName);
-        bootdev = 0;
-    } else if (strcasestr(selName, ".rl")) {
-        snprintf(rlfile, sizeof(rlfile), "/pdp11/%s", selName);
-        bootdev = 1;
-    }
-    
+void perform_soft_reset() {
     // Close old files
-    if (cpu.unibus.rk11.rk05) {
-        cpu.unibus.rk11.rk05.close();
-        cpu.unibus.rk11.rk05 = File();
-    }
-    if (cpu.unibus.rl11.rl02) {
-        cpu.unibus.rl11.rl02.close();
-        cpu.unibus.rl11.rl02 = File();
+    for(int i=0; i<4; i++) {
+        if (cpu.unibus.rk11.rk05[i]) { cpu.unibus.rk11.rk05[i].close(); cpu.unibus.rk11.rk05[i] = File(); }
+        if (cpu.unibus.rl11.rl02[i]) { cpu.unibus.rl11.rl02[i].close(); cpu.unibus.rl11.rl02[i] = File(); }
     }
     
     // Open new files
-    cpu.unibus.rk11.rk05 = SD.open(rkfile, "rb+");
-    cpu.unibus.rl11.rl02 = SD.open(rlfile, "rb+");
+    int bootdev = 0;
+    for(int i=0; i<4; i++) {
+        if (current_options.rk_disks[i] >= 0) {
+            String path = "/pdp11/" + Fnames[current_options.rk_disks[i]];
+            cpu.unibus.rk11.rk05[i] = SD.open(path.c_str(), "rb+");
+        }
+        if (current_options.rl_disks[i] >= 0) {
+            String path = "/pdp11/" + Fnames[current_options.rl_disks[i]];
+            cpu.unibus.rl11.rl02[i] = SD.open(path.c_str(), "rb+");
+        }
+    }
+    if (current_options.rk_disks[0] < 0 && current_options.rl_disks[0] >= 0) bootdev = 1;
     
-    if (strcasestr(rlfile, ".rl02")) {
+    if (current_options.rl_disks[0] >= 0 && strcasestr(Fnames[current_options.rl_disks[0]].c_str(), ".rl02")) {
         extern int RLTYPE;
         RLTYPE = 0235;
     } else {
@@ -117,7 +106,7 @@ void perform_soft_reset(int new_disk_idx) {
     
     canvas.fillSprite(0);
     canvas.setCursor(0, 0);
-    canvas.printf("[SYSTEM RESET] %s...\r\n", selName);
+    canvas.printf("[SYSTEM RESET]\r\n");
     canvas.pushSprite(0, 0);
     delay(500); 
 }
@@ -240,55 +229,33 @@ void setup() {
     
     // Check if soft reset requested a specific disk from the menu
     if (request_soft_reset) {
-        SelFile = soft_reset_disk_idx;
         request_soft_reset = false;
-    } else {
-        SelFile = current_options.last_disk;
-    }
-    
-    if (SelFile >= cntr) SelFile = 0;
-
-    // Derive boot device from file extension
-    // Fnames[] stores paths relative to /pdp11/; we prepend it here.
-    const char *selName = Fnames[SelFile].c_str();
-    strcpy(rkfile, "/pdp11/Empty_RK05.dsk");
-    strcpy(rlfile, "/pdp11/Empty_RL02.dsk");
-
-    if (strcasestr(selName, ".rk")) {
-        snprintf(rkfile, sizeof(rkfile), "/pdp11/%s", selName);
-        bootdev = 0;
-    } else if (strcasestr(selName, ".rl")) {
-        snprintf(rlfile, sizeof(rlfile), "/pdp11/%s", selName);
-        bootdev = 1;
     }
 
-    Serial.printf("rkfile='%s'  rlfile='%s'  bootdev=%d\r\n", rkfile, rlfile, bootdev);
-
-    // Verify boot disk file exists before handing to emulator
-    {
-        const char *bootfile = (bootdev == 0) ? rkfile : rlfile;
-        File test = SD.open(bootfile, FILE_READ);
-        if (!test) {
-            Serial.printf("ERROR: cannot open %s\r\n", bootfile);
-            canvas.fillSprite(0);
-            canvas.setCursor(0, 0);
-            canvas.setTextColor(1, 0);
-            canvas.printf("Cannot open:\n%s\n", bootfile);
-            canvas.pushSprite(0, 0);
-            while (1) delay(1000);
+    // Open new files based on current_options
+    bootdev = 0;
+    for(int i=0; i<4; i++) {
+        if (current_options.rk_disks[i] >= 0) {
+            String path = "/pdp11/" + Fnames[current_options.rk_disks[i]];
+            cpu.unibus.rk11.rk05[i] = SD.open(path.c_str(), "rb+");
         }
-        Serial.printf("Disk OK: %s (%lu B)\r\n", bootfile, (unsigned long)test.size());
-        test.close();
+        if (current_options.rl_disks[i] >= 0) {
+            String path = "/pdp11/" + Fnames[current_options.rl_disks[i]];
+            cpu.unibus.rl11.rl02[i] = SD.open(path.c_str(), "rb+");
+        }
     }
+    if (current_options.rk_disks[0] < 0 && current_options.rl_disks[0] >= 0) bootdev = 1;
+
+    Serial.printf("bootdev=%d\r\n", bootdev);
 
     // Switch display to terminal
     canvas.fillSprite(0);
     canvas.setCursor(0, 0);
-    canvas.printf("Booting %s...\r\n", selName);
+    canvas.printf("Booting...\r\n");
     canvas.pushSprite(0, 0);
 
     // Hand off to emulator — never returns
-    startup(rkfile, rlfile, bootdev);
+    startup(bootdev);
 }
 
 // loop() is never reached — startup() contains its own infinite loop.

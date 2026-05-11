@@ -15,7 +15,13 @@ int soft_reset_disk_idx = 0;
 
 void loadOptions() {
     preferences.begin("pdp11", false);
-    current_options.last_disk   = preferences.getInt("last_disk", 0);
+    for (int i = 0; i < 4; i++) {
+        char key[16];
+        snprintf(key, sizeof(key), "rk_disk_%d", i);
+        current_options.rk_disks[i] = preferences.getInt(key, (i == 0) ? 0 : -1);
+        snprintf(key, sizeof(key), "rl_disk_%d", i);
+        current_options.rl_disks[i] = preferences.getInt(key, -1);
+    }
     current_options.term_color  = (TermColor)preferences.getInt("term_color", COLOR_GREEN);
     current_options.brightness  = preferences.getInt("brightness", 200);
     current_options.cpu_model   = (CpuModel)preferences.getInt("cpu_model", CPU_PDP1140);
@@ -24,7 +30,13 @@ void loadOptions() {
 
 void saveOptions() {
     preferences.begin("pdp11", false);
-    preferences.putInt("last_disk",  current_options.last_disk);
+    for (int i = 0; i < 4; i++) {
+        char key[16];
+        snprintf(key, sizeof(key), "rk_disk_%d", i);
+        preferences.putInt(key, current_options.rk_disks[i]);
+        snprintf(key, sizeof(key), "rl_disk_%d", i);
+        preferences.putInt(key, current_options.rl_disks[i]);
+    }
     preferences.putInt("term_color", current_options.term_color);
     preferences.putInt("brightness", current_options.brightness);
     preferences.putInt("cpu_model",  current_options.cpu_model);
@@ -110,41 +122,156 @@ static void drawMenuList(int num_items, int selected, const char* items[], int a
 }
 
 // Submenus
-static void menuDiskImage() {
-    int sel = current_options.last_disk;
-    if (sel >= cntr) sel = 0;
-    
+static void menuSelectDisk(int* target_disk_idx, const char* title) {
+    String curDir = "";
+    int sel = 0;
     bool redraw = true;
+    
+    // Attempt to initialize sel based on current selection path
+    if (*target_disk_idx >= 0 && *target_disk_idx < cntr) {
+        String path = Fnames[*target_disk_idx];
+        int lastSlash = path.lastIndexOf('/');
+        if (lastSlash != -1) {
+            curDir = path.substring(0, lastSlash);
+        }
+    }
+
     while(true) {
+        String visibleNames[70];
+        int visibleFIdx[70]; 
+        int visibleType[70]; // 0: file, 1: dir, 2: empty, 3: back
+        int vCount = 0;
+
+        if (curDir == "") {
+            visibleNames[vCount] = "[ Empty ]";
+            visibleFIdx[vCount] = -1;
+            visibleType[vCount] = 2;
+            vCount++;
+        } else {
+            visibleNames[vCount] = ".. [Back to Parent]";
+            visibleFIdx[vCount] = -1;
+            visibleType[vCount] = 3;
+            vCount++;
+        }
+
+        String foundFolders[64];
+        int fCount = 0;
+
+        for (int i=0; i<cntr; i++) {
+            String path = Fnames[i];
+            bool matches = false;
+            String rel = "";
+            if (curDir == "") {
+                matches = true;
+                rel = path;
+            } else if (path.startsWith(curDir + "/")) {
+                matches = true;
+                rel = path.substring(curDir.length() + 1);
+            }
+
+            if (matches) {
+                int slash = rel.indexOf('/');
+                if (slash == -1) {
+                    visibleNames[vCount] = rel;
+                    visibleFIdx[vCount] = i;
+                    visibleType[vCount] = 0;
+                    vCount++;
+                } else {
+                    String folderName = rel.substring(0, slash);
+                    bool alreadyFound = false;
+                    for (int j=0; j<fCount; j++) {
+                        if (foundFolders[j] == folderName) { alreadyFound = true; break; }
+                    }
+                    if (!alreadyFound && fCount < 64) {
+                        foundFolders[fCount++] = folderName;
+                    }
+                }
+            }
+        }
+
+        for (int i=0; i<fCount; i++) {
+            visibleNames[vCount] = "> " + foundFolders[i] + "/";
+            visibleFIdx[vCount] = i; 
+            visibleType[vCount] = 1;
+            vCount++;
+        }
+
+        if (sel >= vCount) sel = vCount - 1;
+        if (sel < 0) sel = 0;
+
         if (redraw) {
-            drawMenuHeader("Disk Image");
-            // Convert String[] to const char*[]
-            const char* c_items[64];
-            for (int i=0; i<cntr; i++) c_items[i] = Fnames[i].c_str();
-            drawMenuList(cntr, sel, c_items, current_options.last_disk);
-            drawMenuFooter("; Up  . Down  Enter Select  Esc Back");
+            String header = String(title);
+            if (curDir != "") header += " (/" + curDir + ")";
+            drawMenuHeader(header.c_str());
+            
+            const char* items[70];
+            int activeIdx = -1;
+            for(int i=0; i<vCount; i++) {
+                items[i] = visibleNames[i].c_str();
+                if (visibleType[i] == 0 && visibleFIdx[i] == *target_disk_idx) activeIdx = i;
+                if (visibleType[i] == 2 && *target_disk_idx == -1) activeIdx = i;
+            }
+            
+            drawMenuList(vCount, sel, items, activeIdx);
+            drawMenuFooter("; Up  . Down  Enter Open/Select  Esc Back");
             redraw = false;
         }
         
         M5Cardputer.update();
+        if (M5Cardputer.BtnA.wasPressed()) {
+            waitForKeyRelease();
+            request_soft_reset = true; // Signal exit to emulator
+            return;
+        }
+
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
             auto status = M5Cardputer.Keyboard.keysState();
             for (auto ch : status.word) {
                 if (ch == ';') { if (sel > 0) { sel--; redraw = true; } }
-                if (ch == '.') { if (sel < cntr - 1) { sel++; redraw = true; } }
+                if (ch == '.') { if (sel < vCount - 1) { sel++; redraw = true; } }
             }
             if (status.enter) {
-                current_options.last_disk = sel;
+                if (visibleType[sel] == 0) { // File
+                    *target_disk_idx = visibleFIdx[sel];
+                    waitForKeyRelease();
+                    return;
+                } else if (visibleType[sel] == 1) { // Folder
+                    String folderName = visibleNames[sel].substring(2);
+                    folderName.remove(folderName.length()-1); // remove trailing slash
+                    if (curDir == "") curDir = folderName;
+                    else curDir = curDir + "/" + folderName;
+                    sel = 0;
+                    redraw = true;
+                } else if (visibleType[sel] == 2) { // Empty
+                    *target_disk_idx = -1;
+                    waitForKeyRelease();
+                    return;
+                } else if (visibleType[sel] == 3) { // Back
+                    int lastSlash = curDir.lastIndexOf('/');
+                    if (lastSlash == -1) curDir = "";
+                    else curDir = curDir.substring(0, lastSlash);
+                    sel = 0;
+                    redraw = true;
+                }
                 waitForKeyRelease();
-                return;
             }
+            
             bool esc_pressed = status.del;
             for (auto ch : status.word) {
                 if (ch == 27 || ch == '`') esc_pressed = true;
             }
             if (esc_pressed) {
-                waitForKeyRelease();
-                return;
+                if (curDir != "") {
+                    int lastSlash = curDir.lastIndexOf('/');
+                    if (lastSlash == -1) curDir = "";
+                    else curDir = curDir.substring(0, lastSlash);
+                    sel = 0;
+                    redraw = true;
+                    waitForKeyRelease();
+                } else {
+                    waitForKeyRelease();
+                    return;
+                }
             }
         }
         delay(20);
@@ -166,6 +293,10 @@ static void menuTerminalColor() {
         }
         
         M5Cardputer.update();
+        if (M5Cardputer.BtnA.wasPressed() || request_soft_reset) {
+            request_soft_reset = true;
+            return;
+        }
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
             auto status = M5Cardputer.Keyboard.keysState();
             for (auto ch : status.word) {
@@ -206,6 +337,10 @@ static void menuBrightness() {
         }
         
         M5Cardputer.update();
+        if (M5Cardputer.BtnA.wasPressed() || request_soft_reset) {
+            request_soft_reset = true;
+            return;
+        }
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
             auto status = M5Cardputer.Keyboard.keysState();
             for (auto ch : status.word) {
@@ -246,6 +381,10 @@ static void menuCpuModel() {
             redraw = false;
         }
         M5Cardputer.update();
+        if (M5Cardputer.BtnA.wasPressed() || request_soft_reset) {
+            request_soft_reset = true;
+            return;
+        }
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
             auto status = M5Cardputer.Keyboard.keysState();
             for (auto ch : status.word) {
@@ -291,8 +430,11 @@ static void menuBattery() {
             drawMenuFooter("Esc Back");
             redraw = false;
         }
-        
         M5Cardputer.update();
+        if (M5Cardputer.BtnA.wasPressed() || request_soft_reset) {
+            request_soft_reset = true;
+            return;
+        }
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
             auto status = M5Cardputer.Keyboard.keysState();
             bool esc_pressed = status.del;
@@ -323,7 +465,7 @@ static void menuSystemInfo() {
             uint64_t sd_used  = SD.usedBytes()  / (1024ULL * 1024ULL);
             
             M5Cardputer.Display.setCursor(4, 20);
-            M5Cardputer.Display.printf("Version:      0.1.2\n");
+            M5Cardputer.Display.printf("Version:      0.1.3\n");
             M5Cardputer.Display.setCursor(4, 31);
             M5Cardputer.Display.printf("CPU Model:    %s\n",
                 current_options.cpu_model == CPU_PDP1123 ? "PDP-11/23" : "PDP-11/40");
@@ -339,8 +481,11 @@ static void menuSystemInfo() {
             drawMenuFooter("Esc Back");
             redraw = false;
         }
-        
         M5Cardputer.update();
+        if (M5Cardputer.BtnA.wasPressed() || request_soft_reset) {
+            request_soft_reset = true;
+            return;
+        }
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
             auto status = M5Cardputer.Keyboard.keysState();
             bool esc_pressed = status.del;
@@ -356,34 +501,140 @@ static void menuSystemInfo() {
     }
 }
 
+static void menuEmulationSettings() {
+    int sel = 0;
+    bool redraw = true;
+    int num_items = 9;
+    while(true) {
+        if (redraw) {
+            const char* cpu_name = (current_options.cpu_model == CPU_PDP1123)
+                ? "CPU Model: PDP-11/23" : "CPU Model: PDP-11/40";
+                
+            String rk0 = "RK05 Drive 0 (Boot): " + (current_options.rk_disks[0] >= 0 ? Fnames[current_options.rk_disks[0]] : "[Empty]");
+            String rk1 = "RK05 Drive 1:        " + (current_options.rk_disks[1] >= 0 ? Fnames[current_options.rk_disks[1]] : "[Empty]");
+            String rk2 = "RK05 Drive 2:        " + (current_options.rk_disks[2] >= 0 ? Fnames[current_options.rk_disks[2]] : "[Empty]");
+            String rk3 = "RK05 Drive 3:        " + (current_options.rk_disks[3] >= 0 ? Fnames[current_options.rk_disks[3]] : "[Empty]");
+            
+            String rl0 = "RL02 Drive 0 (Boot): " + (current_options.rl_disks[0] >= 0 ? Fnames[current_options.rl_disks[0]] : "[Empty]");
+            String rl1 = "RL02 Drive 1:        " + (current_options.rl_disks[1] >= 0 ? Fnames[current_options.rl_disks[1]] : "[Empty]");
+            String rl2 = "RL02 Drive 2:        " + (current_options.rl_disks[2] >= 0 ? Fnames[current_options.rl_disks[2]] : "[Empty]");
+            String rl3 = "RL02 Drive 3:        " + (current_options.rl_disks[3] >= 0 ? Fnames[current_options.rl_disks[3]] : "[Empty]");
+            
+            const char* items[] = {
+                cpu_name,
+                rk0.c_str(), rk1.c_str(), rk2.c_str(), rk3.c_str(),
+                rl0.c_str(), rl1.c_str(), rl2.c_str(), rl3.c_str()
+            };
+            drawMenuHeader("Emulation Settings");
+            drawMenuList(num_items, sel, items);
+            drawMenuFooter("; Up  . Down  Enter Select  Esc Back");
+            redraw = false;
+        }
+        
+        M5Cardputer.update();
+        if (M5Cardputer.BtnA.wasPressed() || request_soft_reset) {
+            request_soft_reset = true; 
+            return;
+        }
+        if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
+            auto status = M5Cardputer.Keyboard.keysState();
+            bool handled = false;
+            bool esc_pressed = status.del;
+            for (auto ch : status.word) {
+                if (ch == ';') { if (sel > 0) { sel--; redraw = true; handled = true; } }
+                if (ch == '.') { if (sel < num_items - 1) { sel++; redraw = true; handled = true; } }
+                if (ch == 27 || ch == '`') esc_pressed = true;
+            }
+            if (status.enter && !handled) {
+                switch(sel) {
+                    case 0: menuCpuModel(); break;
+                    case 1: menuSelectDisk(&current_options.rk_disks[0], "Select RK05 Drive 0"); break;
+                    case 2: menuSelectDisk(&current_options.rk_disks[1], "Select RK05 Drive 1"); break;
+                    case 3: menuSelectDisk(&current_options.rk_disks[2], "Select RK05 Drive 2"); break;
+                    case 4: menuSelectDisk(&current_options.rk_disks[3], "Select RK05 Drive 3"); break;
+                    case 5: menuSelectDisk(&current_options.rl_disks[0], "Select RL02 Drive 0"); break;
+                    case 6: menuSelectDisk(&current_options.rl_disks[1], "Select RL02 Drive 1"); break;
+                    case 7: menuSelectDisk(&current_options.rl_disks[2], "Select RL02 Drive 2"); break;
+                    case 8: menuSelectDisk(&current_options.rl_disks[3], "Select RL02 Drive 3"); break;
+                }
+                redraw = true;
+            }
+            if (esc_pressed) {
+                waitForKeyRelease();
+                return;
+            }
+        }
+        delay(20);
+    }
+}
+
+static void menuCardputerSettings() {
+    int sel = 0;
+    bool redraw = true;
+    int num_items = 3;
+    while(true) {
+        if (redraw) {
+            const char* items[] = {
+                "Text Colour",
+                "Brightness",
+                "Battery Status"
+            };
+            drawMenuHeader("Cardputer Settings");
+            drawMenuList(num_items, sel, items);
+            drawMenuFooter("; Up  . Down  Enter Select  Esc Back");
+            redraw = false;
+        }
+        
+        M5Cardputer.update();
+        if (M5Cardputer.BtnA.wasPressed() || request_soft_reset) {
+            request_soft_reset = true;
+            return;
+        }
+        if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
+            auto status = M5Cardputer.Keyboard.keysState();
+            bool handled = false;
+            bool esc_pressed = status.del;
+            for (auto ch : status.word) {
+                if (ch == ';') { if (sel > 0) { sel--; redraw = true; handled = true; } }
+                if (ch == '.') { if (sel < num_items - 1) { sel++; redraw = true; handled = true; } }
+                if (ch == 27 || ch == '`') esc_pressed = true;
+            }
+            if (status.enter && !handled) {
+                switch(sel) {
+                    case 0: menuTerminalColor(); break;
+                    case 1: menuBrightness(); break;
+                    case 2: menuBattery(); break;
+                }
+                redraw = true;
+            }
+            if (esc_pressed) {
+                waitForKeyRelease();
+                return;
+            }
+        }
+        delay(20);
+    }
+}
+
 // Main Options Menu
 void openOptionsMenu() {
     int sel = 0;
-    
-    // Create a backup of current options so we can cancel without saving
     EmulatorOptions backup = current_options;
     
     bool redraw = true;
-    int num_items = 7;
+    int num_items = 4;
     while(true) {
         if (redraw) {
-            String disk_item = "Disk Image: " + Fnames[current_options.last_disk];
-            const char* cpu_name = (current_options.cpu_model == CPU_PDP1123)
-                ? "CPU Model: PDP-11/23"
-                : "CPU Model: PDP-11/40";
             const char* items[] = {
-                disk_item.c_str(),
-                cpu_name,
-                "Text Colour",
-                "Brightness",
+                "Emulation Settings",
+                "Cardputer Settings",
                 "System Info",
-                "Battery Status",
                 "System Reset"
             };
             
             drawMenuHeader("Main Menu");
             drawMenuList(num_items, sel, items);
-            drawMenuFooter("; Up  . Down  Enter Select  Esc Exit (no save)");
+            drawMenuFooter("; Up  . Down  Enter Select  Esc Exit / G0 Save");
             redraw = false;
         }
         
@@ -401,26 +652,28 @@ void openOptionsMenu() {
             }
             if (status.enter && !handled) {
                 switch(sel) {
-                    case 0: menuDiskImage(); break;
-                    case 1: menuCpuModel(); break;
-                    case 2: menuTerminalColor(); break;
-                    case 3: menuBrightness(); break;
-                    case 4: menuSystemInfo(); break;
-                    case 5: menuBattery(); break;
-                    case 6:
+                    case 0: menuEmulationSettings(); break;
+                    case 1: menuCardputerSettings(); break;
+                    case 2: menuSystemInfo(); break;
+                    case 3:
                         request_soft_reset = true;
-                        soft_reset_disk_idx = current_options.last_disk;
                         waitForKeyRelease();
                         return;
                 }
                 redraw = true;
             }
-            if (esc_pressed || g0_pressed) {
+            if (esc_pressed || g0_pressed || request_soft_reset) {
+                bool signal_exit = request_soft_reset;
+                request_soft_reset = false;
                 saveOptions();
                 applyOptions();
-                if (backup.last_disk != current_options.last_disk) {
+                bool disk_changed = false;
+                for(int i=0; i<4; i++) {
+                    if (backup.rk_disks[i] != current_options.rk_disks[i]) disk_changed = true;
+                    if (backup.rl_disks[i] != current_options.rl_disks[i]) disk_changed = true;
+                }
+                if (disk_changed || backup.cpu_model != current_options.cpu_model || signal_exit) {
                     request_soft_reset = true;
-                    soft_reset_disk_idx = current_options.last_disk;
                 }
                 waitForKeyRelease();
                 return;
@@ -428,9 +681,13 @@ void openOptionsMenu() {
         } else if (g0_pressed) {
             saveOptions();
             applyOptions();
-            if (backup.last_disk != current_options.last_disk) {
+            bool disk_changed = false;
+            for(int i=0; i<4; i++) {
+                if (backup.rk_disks[i] != current_options.rk_disks[i]) disk_changed = true;
+                if (backup.rl_disks[i] != current_options.rl_disks[i]) disk_changed = true;
+            }
+            if (disk_changed || backup.cpu_model != current_options.cpu_model) {
                 request_soft_reset = true;
-                soft_reset_disk_idx = current_options.last_disk;
             }
             return;
         }

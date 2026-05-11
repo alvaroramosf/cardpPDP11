@@ -41,7 +41,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 class RL11 {
 
 public:
-File rl02;
+File rl02[4];
 void write16(uint32_t a, uint16_t v);
 uint16_t read16(uint32_t a);
 void reset();
