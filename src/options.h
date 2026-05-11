@@ -10,10 +10,16 @@ enum TermColor {
     COLOR_PAPER = 3
 };
 
+enum CpuModel {
+    CPU_PDP1140 = 0,  // PDP-11/40: 18-bit Unibus, no MFPT
+    CPU_PDP1123 = 1   // PDP-11/23: 22-bit Q-Bus (F-11), MFPT returns 1
+};
+
 struct EmulatorOptions {
     int last_disk;
     TermColor term_color;
     int brightness;
+    CpuModel cpu_model;
 };
 
 extern EmulatorOptions current_options;

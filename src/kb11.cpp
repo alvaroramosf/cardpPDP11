@@ -30,7 +30,12 @@ void KB11::reset(uint16_t start,int bootdev) {
         unibus.write16(02000 + (i * 2), bootrom[i]);
     }
     if (bootdev)
-        unibus.rl11.loadboot();           // Overlay RK05 boot
+        unibus.rl11.loadboot();           // Overlay RK05 boot with RL boot
+    // In PDP-11/23 mode, enable 22-bit MMU from the start (F-11 default)
+    extern struct EmulatorOptions current_options;
+    if (current_options.cpu_model == 1) { // CPU_PDP1123
+        mmu.SR[3] = 020; // Enable 22-bit addressing
+    }
     R[7] = start;
     stacklimit = 0xff;
     switchregister = 0173030;
@@ -411,8 +416,15 @@ void KB11::RTS(const uint16_t instr) {
 }
 
 // MFPT 000007
+// Returns processor type: PDP-11/23 (F-11) returns 1 in R0.
+// PDP-11/40 does not have MFPT; executing it traps to vector 010.
 void KB11::MFPT() {
-    trap(010); // not a PDP11/44
+    extern struct EmulatorOptions current_options;
+    if (current_options.cpu_model == 1) { // CPU_PDP1123
+        R[0] = 1;   // F-11 chip identifier
+    } else {
+        trap(010);  // PDP-11/40: MFPT is an illegal instruction
+    }
 }
 
 // RTI 000004, RTT 000006

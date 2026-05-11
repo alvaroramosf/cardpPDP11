@@ -15,17 +15,19 @@ int soft_reset_disk_idx = 0;
 
 void loadOptions() {
     preferences.begin("pdp11", false);
-    current_options.last_disk = preferences.getInt("last_disk", 0);
-    current_options.term_color = (TermColor)preferences.getInt("term_color", COLOR_GREEN);
-    current_options.brightness = preferences.getInt("brightness", 200);
+    current_options.last_disk   = preferences.getInt("last_disk", 0);
+    current_options.term_color  = (TermColor)preferences.getInt("term_color", COLOR_GREEN);
+    current_options.brightness  = preferences.getInt("brightness", 200);
+    current_options.cpu_model   = (CpuModel)preferences.getInt("cpu_model", CPU_PDP1140);
     preferences.end();
 }
 
 void saveOptions() {
     preferences.begin("pdp11", false);
-    preferences.putInt("last_disk", current_options.last_disk);
+    preferences.putInt("last_disk",  current_options.last_disk);
     preferences.putInt("term_color", current_options.term_color);
     preferences.putInt("brightness", current_options.brightness);
+    preferences.putInt("cpu_model",  current_options.cpu_model);
     preferences.end();
 }
 
@@ -229,7 +231,39 @@ static void menuBrightness() {
     }
 }
 
-// Submenus removed to simplify
+static void menuCpuModel() {
+    int sel = current_options.cpu_model;
+    const char* items[] = {
+        "PDP-11/40  (18-bit Unibus)",
+        "PDP-11/23  (22-bit Q-Bus, F-11)"
+    };
+    bool redraw = true;
+    while (true) {
+        if (redraw) {
+            drawMenuHeader("CPU Model");
+            drawMenuList(2, sel, items, current_options.cpu_model);
+            drawMenuFooter("; Up  . Down  Enter Select  Esc Back");
+            redraw = false;
+        }
+        M5Cardputer.update();
+        if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
+            auto status = M5Cardputer.Keyboard.keysState();
+            for (auto ch : status.word) {
+                if (ch == ';') { if (sel > 0) { sel--; redraw = true; } }
+                if (ch == '.') { if (sel < 1) { sel++; redraw = true; } }
+            }
+            if (status.enter) {
+                current_options.cpu_model = (CpuModel)sel;
+                waitForKeyRelease();
+                return;
+            }
+            bool esc_pressed = status.del;
+            for (auto ch : status.word) { if (ch == 27 || ch == '`') esc_pressed = true; }
+            if (esc_pressed) { waitForKeyRelease(); return; }
+        }
+        delay(20);
+    }
+}
 
 static void menuBattery() {
     bool redraw = true;
@@ -289,14 +323,17 @@ static void menuSystemInfo() {
             uint64_t sd_used  = SD.usedBytes()  / (1024ULL * 1024ULL);
             
             M5Cardputer.Display.setCursor(4, 20);
-            M5Cardputer.Display.printf("Version:      0.1.0\n");
+            M5Cardputer.Display.printf("Version:      0.1.2\n");
             M5Cardputer.Display.setCursor(4, 31);
-            M5Cardputer.Display.printf("Free RAM:     %lu KB\n", (unsigned long)(free_ram / 1024));
+            M5Cardputer.Display.printf("CPU Model:    %s\n",
+                current_options.cpu_model == CPU_PDP1123 ? "PDP-11/23" : "PDP-11/40");
             M5Cardputer.Display.setCursor(4, 42);
-            M5Cardputer.Display.printf("Min Free RAM: %lu KB\n", (unsigned long)(min_free_ram / 1024));
+            M5Cardputer.Display.printf("Free RAM:     %lu KB\n", (unsigned long)(free_ram / 1024));
             M5Cardputer.Display.setCursor(4, 53);
-            M5Cardputer.Display.printf("SD Total:     %llu MB\n", sd_total);
+            M5Cardputer.Display.printf("Min Free RAM: %lu KB\n", (unsigned long)(min_free_ram / 1024));
             M5Cardputer.Display.setCursor(4, 64);
+            M5Cardputer.Display.printf("SD Total:     %llu MB\n", sd_total);
+            M5Cardputer.Display.setCursor(4, 75);
             M5Cardputer.Display.printf("SD Used:      %llu MB\n", sd_used);
             
             drawMenuFooter("Esc Back");
@@ -327,12 +364,16 @@ void openOptionsMenu() {
     EmulatorOptions backup = current_options;
     
     bool redraw = true;
-    int num_items = 6;
+    int num_items = 7;
     while(true) {
         if (redraw) {
             String disk_item = "Disk Image: " + Fnames[current_options.last_disk];
+            const char* cpu_name = (current_options.cpu_model == CPU_PDP1123)
+                ? "CPU Model: PDP-11/23"
+                : "CPU Model: PDP-11/40";
             const char* items[] = {
                 disk_item.c_str(),
+                cpu_name,
                 "Text Colour",
                 "Brightness",
                 "System Info",
@@ -361,11 +402,12 @@ void openOptionsMenu() {
             if (status.enter && !handled) {
                 switch(sel) {
                     case 0: menuDiskImage(); break;
-                    case 1: menuTerminalColor(); break;
-                    case 2: menuBrightness(); break;
-                    case 3: menuSystemInfo(); break;
-                    case 4: menuBattery(); break;
-                    case 5:
+                    case 1: menuCpuModel(); break;
+                    case 2: menuTerminalColor(); break;
+                    case 3: menuBrightness(); break;
+                    case 4: menuSystemInfo(); break;
+                    case 5: menuBattery(); break;
+                    case 6:
                         request_soft_reset = true;
                         soft_reset_disk_idx = current_options.last_disk;
                         waitForKeyRelease();
