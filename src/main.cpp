@@ -80,14 +80,14 @@ void perform_soft_reset(int new_disk_idx) {
     int bootdev = 0;
     
     const char *selName = Fnames[new_disk_idx].c_str();
-    strcpy(rkfile, "/Empty_RK05.dsk");
-    strcpy(rlfile, "/Empty_RL02.dsk");
+    strcpy(rkfile, "/pdp11/Empty_RK05.dsk");
+    strcpy(rlfile, "/pdp11/Empty_RL02.dsk");
     
     if (strcasestr(selName, ".rk")) {
-        snprintf(rkfile, sizeof(rkfile), "/%s", selName);
+        snprintf(rkfile, sizeof(rkfile), "/pdp11/%s", selName);
         bootdev = 0;
     } else if (strcasestr(selName, ".rl")) {
-        snprintf(rlfile, sizeof(rlfile), "/%s", selName);
+        snprintf(rlfile, sizeof(rlfile), "/pdp11/%s", selName);
         bootdev = 1;
     }
     
@@ -143,19 +143,25 @@ char kl11_get_kbuf() {
 }
 
 // ── SD scan for disk images ───────────────────────────────────────────────────
-static void scanDiskImages(fs::FS &fs, const char *dirname) {
+static void scanDiskImages(fs::FS &fs, const char *dirname, const char *basedir) {
     File root = fs.open(dirname);
     if (!root || !root.isDirectory()) return;
     File file = root.openNextFile();
     while (file && cntr < 64) {
-        if (!file.isDirectory()) {
-            const char *name = file.name();
-            // Strip leading '/' — modern Arduino-ESP32 SD includes it,
-            // we add it back explicitly when building the full path.
-            if (name[0] == '/') name++;
-            if (strcasestr(name, ".rk05") || strcasestr(name, ".rl0")) {
-                Fnames[cntr++] = name;
-                Serial.printf("  [%d] %s  (%lu B)\r\n", cntr, name,
+        if (file.isDirectory()) {
+            scanDiskImages(fs, file.path(), basedir);
+        } else {
+            const char *path = file.path();
+            // Store path relative to basedir (e.g. "/pdp11/pdp11-40/foo.rk05" → "pdp11-40/foo.rk05")
+            const char *rel = path;
+            size_t baselen = strlen(basedir);
+            if (strncmp(path, basedir, baselen) == 0) {
+                rel = path + baselen;
+                if (*rel == '/') rel++;
+            }
+            if (strcasestr(rel, ".rk05") || strcasestr(rel, ".rl0")) {
+                Fnames[cntr++] = rel;
+                Serial.printf("  [%d] %s  (%lu B)\r\n", cntr, rel,
                               (unsigned long)file.size());
             }
         }
@@ -217,13 +223,15 @@ void setup() {
                   ESP.getFreeHeap(),
                   (unsigned long)ESP.getFreePsram());
 
-    // Scan SD for disk images
-    scanDiskImages(SD, "/");
+    // Scan SD for disk images in /pdp11/ (recursive)
+    scanDiskImages(SD, "/pdp11", "/pdp11");
     if (cntr == 0) {
-        Serial.println("No .RK05/.RL02 images on SD!");
+        Serial.println("No .RK05/.RL02 images in /pdp11/!");
         M5Cardputer.Display.setTextColor(TFT_RED, BLACK);
         M5Cardputer.Display.setCursor(4, 4);
-        M5Cardputer.Display.print("No disk images on SD!");
+        M5Cardputer.Display.print("No disk images in /pdp11/!");
+        M5Cardputer.Display.setCursor(4, 14);
+        M5Cardputer.Display.print("Put .rk05/.rl0x in /pdp11/");
         while (1) delay(1000);
     }
 
@@ -241,16 +249,16 @@ void setup() {
     if (SelFile >= cntr) SelFile = 0;
 
     // Derive boot device from file extension
-    // Fnames[] stores names WITHOUT leading '/'; we prepend it here.
+    // Fnames[] stores paths relative to /pdp11/; we prepend it here.
     const char *selName = Fnames[SelFile].c_str();
-    strcpy(rkfile, "/Empty_RK05.dsk");
-    strcpy(rlfile, "/Empty_RL02.dsk");  // RL02 default (might not exist, handled in rk11/rl11)
+    strcpy(rkfile, "/pdp11/Empty_RK05.dsk");
+    strcpy(rlfile, "/pdp11/Empty_RL02.dsk");
 
     if (strcasestr(selName, ".rk")) {
-        snprintf(rkfile, sizeof(rkfile), "/%s", selName);
+        snprintf(rkfile, sizeof(rkfile), "/pdp11/%s", selName);
         bootdev = 0;
     } else if (strcasestr(selName, ".rl")) {
-        snprintf(rlfile, sizeof(rlfile), "/%s", selName);
+        snprintf(rlfile, sizeof(rlfile), "/pdp11/%s", selName);
         bootdev = 1;
     }
 
