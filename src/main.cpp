@@ -256,19 +256,20 @@ void setup() {
 
     Serial.printf("rkfile='%s'  rlfile='%s'  bootdev=%d\r\n", rkfile, rlfile, bootdev);
 
-    // Verify disk file exists before handing to emulator
+    // Verify boot disk file exists before handing to emulator
     {
-        File test = SD.open(rkfile, FILE_READ);
+        const char *bootfile = (bootdev == 0) ? rkfile : rlfile;
+        File test = SD.open(bootfile, FILE_READ);
         if (!test) {
-            Serial.printf("ERROR: cannot open %s\r\n", rkfile);
+            Serial.printf("ERROR: cannot open %s\r\n", bootfile);
             canvas.fillSprite(0);
             canvas.setCursor(0, 0);
             canvas.setTextColor(1, 0);
-            canvas.printf("Cannot open:\n%s\n", rkfile);
+            canvas.printf("Cannot open:\n%s\n", bootfile);
             canvas.pushSprite(0, 0);
             while (1) delay(1000);
         }
-        Serial.printf("Disk OK: %s (%lu B)\r\n", rkfile, (unsigned long)test.size());
+        Serial.printf("Disk OK: %s (%lu B)\r\n", bootfile, (unsigned long)test.size());
         test.close();
     }
 
