@@ -37,10 +37,12 @@ static void poll_keyboard() {
     M5Cardputer.update();
     
     if (M5Cardputer.BtnA.wasPressed()) {
-        openMonitorMode();
+        cpu.wtstate = true;  // Pause CPU
+        openOptionsMenu();   // Open settings menu directly
+        cpu.wtstate = false; // Resume CPU on return
         extern bool display_dirty;
         display_dirty = true;
-        return; // Return immediately to let emulator_loop0 handle soft reset if needed
+        return;
     }
     
     while (Serial.available()) {

@@ -495,10 +495,7 @@ void KB11::step() {
                     }
                     Serial.printf("HALT: DR: %06o\r\n", displayregister);
                     printstate();
-                    {
-                        extern void openMonitorMode();
-                        openMonitorMode();
-                    }
+                    wtstate = true; // CPU idles; G0 button opens Options Menu
                     return;
                 case 1: // WAIT 000001
                     WAIT();
