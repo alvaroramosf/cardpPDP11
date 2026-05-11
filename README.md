@@ -13,6 +13,21 @@ all from a pocket-sized device with a real keyboard.
 
 ---
 
+## Table of Contents
+1. [Hardware Required](#hardware-required)
+2. [Emulated Hardware](#emulated-hardware)
+3. [Supported Operating Systems](#supported-operating-systems)
+4. [SD Card Setup](#sd-card-setup)
+5. [Booting UNIX V6](#booting-unix-v6)
+6. [Building & Flashing](#building--flashing)
+7. [Controls](#controls)
+8. [Options Menu](#options-menu)
+9. [Project Structure](#project-structure)
+10. [Changelog](#changelog)
+11. [Credits](#credits)
+
+---
+
 ## Hardware Required
 
 | Component | Details |
@@ -118,19 +133,32 @@ extensions. The disk selection menu allows navigating these subdirectories.
 5. When the `#` prompt appears, you are in!
 
 ### Multi-Disk Configuration
-To access extra volumes (like `/usr` or `/doc` from SIMH distributions):
-1. In **Emulation Settings**, mount the root disk in **Drive 0**.
-2. Mount the additional volumes in **Drive 1**, **Drive 2**, etc.
-3. Boot into UNIX normally.
-4. Create the device nodes (if they don't exist) and mount them:
+To access extra volumes (like `/usr` or `/doc` from SIMH distributions), you should map the images as follows in the **Emulation Settings** menu:
+
+| RK Drive | Image File | Mount Point | Content |
+|---|---|---|---|
+| **RK0** | `unix0_v6_rk_DL.rk05` | `/` (Root) | Boot kernel and base system |
+| **RK1** | `unix1_v6_rk.rk05` | `/usr` | User files, binaries, games |
+| **RK2** | `unix2_v6_rk.rk05` | `/doc` | Documentation and source code |
+| **RK3** | `unix3_v6_rk.rk05` | (optional) | Extra binaries or source |
+
+#### Mounting Procedure
+1. Boot from **RK0** (`rkunix`).
+2. Log in as `root`.
+3. Create the device nodes for the extra drives (one-time setup):
    ```bash
-   # Create device for Drive 1 (Block device 0, minor 1)
    /etc/mknod /dev/rk1 b 0 1
-   
-   # Mount it to /usr
-   /etc/mount /dev/rk1 /usr
+   /etc/mknod /dev/rk2 b 0 2
+   /etc/mknod /dev/rk3 b 0 3
    ```
-5. You can now access the files in `/usr`.
+4. Mount the volumes:
+   ```bash
+   /etc/mount /dev/rk1 /usr
+   /etc/mount /dev/rk2 /doc
+   ```
+5. Verify the content with `ls /usr` or `ls /doc`.
+
+---
 
 ---
 
