@@ -1,7 +1,7 @@
 # cardpPDP11 — PDP-11 Emulator for M5Stack Cardputer
 
-A PDP-11/40–11/24 emulator running on the **M5Stack Cardputer** (ESP32-S3).
-Boot Unix V6, RT-11, RSX-11/M, RSTS/E or Ultrix-11 directly from an SD card —
+A PDP-11/40 and PDP-11/23 emulator running on the **M5Stack Cardputer** (ESP32-S3).
+Boot Unix V6, RT-11, RSX-11/M or RSTS/E directly from an SD card —
 all from a pocket-sized device with a real keyboard.
 
 ![Cardputer Logo](Images/Logo.jpg)
@@ -30,56 +30,83 @@ all from a pocket-sized device with a real keyboard.
 
 | Component | Emulated Device |
 |-----------|----------------|
-| CPU | DEC PDP-11/40 (18-bit) + PDP-11/24 (22-bit, non-split I/D, Unibus map) |
-| RAM | Up to 248 KB (18-bit mode) |
+| CPU | DEC PDP-11/40 (18-bit Unibus) **or** PDP-11/23 (22-bit Q-Bus, F-11 chip) — selectable |
+| RAM | Up to 248 KB (18-bit mode, limited by internal SRAM) |
 | FPU | FP11 floating-point unit |
-| Instruction set | EIS (Extended Instruction Set) |
-| Disk — RK | RK11 / RK05 cartridge disk |
-| Disk — RL | RL11 / RL01 and RL02 disk drives (single and multi-volume images) |
+| Instruction set | EIS (Extended Instruction Set) + MUL/DIV/ASH/ASHC |
+| Disk — RK | RK11 / RK05 cartridge disk (~2.4 MB) |
+| Disk — RL | RL11 / RL01 (~5 MB) and RL02 (~10 MB) disk drives |
 | Console | KL11 serial (mapped to Cardputer keyboard + display) |
 | Secondary serial | DL11 (available via USB serial at 115200 baud) |
 | Real-time clock | KW11-L line frequency clock |
+
+### CPU Model Differences
+
+| Feature | PDP-11/40 | PDP-11/23 (F-11) |
+|---|---|---|
+| Address bus | 18-bit Unibus | 22-bit Q-Bus |
+| MFPT instruction | Illegal (trap 010) | Returns `1` (F-11 ID) |
+| 22-bit MMU | OS must activate | Active from reset |
+| Compatible images | 18-bit OS builds | 22-bit OS builds |
+
+> **Note:** With only 248 KB of internal SRAM (Cardputer has no PSRAM),
+> both models are limited to 248 KB of RAM regardless of address bus width.
+> Systems requiring >248 KB (e.g. Ultrix-11, 2.9BSD) will not run.
 
 ---
 
 ## Supported Operating Systems
 
+### PDP-11/40 images (`/pdp11/pdp11-40/`)
+
 | Image file | OS | Boot device |
 |---|---|---|
 | `rk0_v6_DL.rk05` | Unix V6 (with DL11 second user) | RK05 |
-| `RT11_V5_CFB.RL02` | RT-11 V5 (with FORTRAN, BASIC, ...) | RL02 |
+| `RT11_V5_CFB.RL02` | RT-11 V5 (FORTRAN, BASIC, …) | RL02 |
 | `RT11_V5_MUBasic.RL01` | RT-11 V5 + Multi-User BASIC | RL01 |
 | `rsts_v9_iss_forth.rl02` | RSTS/E V9 + FORTH | RL02 |
 | `rsx11m46-ccc.rl02` | RSX-11/M 4.6 | RL02 |
+
+### PDP-11/23 images (`/pdp11/pdp11-23/`) — require >248 KB RAM
+
+| Image file | OS | Boot device |
+|---|---|---|
 | `Ultrix-V2-Full.rl02` | Ultrix-11 V2 (2× RL02 volumes) | RL02 |
 | `Ultrix-V3.rl02` | Ultrix-11 V3 (2× RL02 volumes) | RL02 |
 | `Ultrix_V3_UX24.rl02` | Ultrix-11 V3 (22-bit / 11/24 mode) | RL02 |
 
+> Ultrix images require PSRAM (not available on stock Cardputer) and are
+> included for reference / future hardware with PSRAM expansion.
+
 All images are SIMH-compatible. See [`docs/Readme.os`](docs/Readme.os) for a
-full list of tested images and [`docs/Readme.Ultrix`](docs/Readme.Ultrix) for
-Ultrix-specific notes and multi-volume setup instructions.
+full list of tested images.
 
 ---
 
 ## SD Card Setup
 
-Format a MicroSD card as **FAT32** and copy the following to its **root**:
+Format a MicroSD card as **FAT32** and create the following structure:
 
 ```
 /
-├── Empty_RK05.dsk        ← required blank RK05 placeholder
-├── Empty_RL01.dsk        ← required blank RL01 placeholder
-├── rk0_v6_DL.rk05       ← (any .rk05 or .rl0x images you want to boot)
-├── RT11_V5_CFB.RL02
-└── ...
+└── pdp11/
+    ├── Empty_RK05.dsk        ← required blank RK05 placeholder
+    ├── Empty_RL02.dsk        ← required blank RL02 placeholder
+    ├── pdp11-40/             ← 18-bit OS images (PDP-11/40 compatible)
+    │   ├── rk0_v6_DL.rk05
+    │   ├── RT11_V5_CFB.RL02
+    │   └── ...
+    └── pdp11-23/             ← 22-bit OS images (PDP-11/23 / need >248 KB)
+        ├── Ultrix-V3.rl02
+        └── ...
 ```
 
-The firmware scans the root of the SD for files with `.rk05` or `.rl0`
-extensions and lists them in the boot menu automatically.
+The firmware scans `/pdp11/` **recursively** for files with `.rk05` or `.rl0x`
+extensions. Subdirectory names are shown in the disk selection menu.
 
-> The `Empty_RK05.dsk` and `Empty_RL01.dsk` files are **required** as
-> placeholder images for the inactive drive. Copy them from the `Images/`
-> directory in this repository.
+> The `Empty_RK05.dsk` placeholder is only needed if you mix RK and RL images
+> and want to avoid an "Cannot open" error. You can skip it if all your images
+> are of one type.
 
 ---
 
@@ -90,7 +117,6 @@ This project uses **PlatformIO**. Arduino IDE is **not** supported.
 ### Prerequisites
 
 ```bash
-# Install PlatformIO Core (if not already installed)
 pip install platformio
 ```
 
@@ -102,8 +128,6 @@ pio run
 
 ### Flash
 
-Connect the Cardputer via USB-C, then:
-
 ```bash
 pio run -t upload
 ```
@@ -114,43 +138,30 @@ pio run -t upload
 pio device monitor -b 115200
 ```
 
-The Cardputer's USB-C port exposes a **CDC serial port** (USB Serial/JTAG).
-It serves two purposes simultaneously:
+The USB-C port exposes a CDC serial port serving two purposes:
 
-1. **Debug output** — SD card info, disk image selection, free RAM, CPU state.
-2. **Parallel PDP-11 console** — every character typed on the physical keyboard
-   is also echoed here, and characters sent from the PC terminal are injected
-   directly into the PDP-11 KL11 receive register. You can use any terminal
-   emulator (e.g. `minicom`, `screen`, PuTTY) at **115200 8N1**.
-
-This means you can operate the PDP-11 entirely from a PC terminal over USB
-without touching the Cardputer keyboard.
+1. **Debug output** — SD card info, disk selection, free RAM, CPU state on HALT.
+2. **Parallel PDP-11 console** — characters from the PC terminal are injected
+   into the KL11 receive register.
 
 ---
 
 ## Controls
 
-### G0 Button — Mode Switching
+### G0 Button
 
-The orange **G0** button (below the display) is the main mode-switching button.
-It cycles through three states:
+The orange **G0** button (below the display) opens the **Options Menu** directly,
+pausing the CPU while the menu is open and resuming on exit.
 
 ```
-  ┌─────────────┐   G0   ┌─────────────┐   G0   ┌─────────────┐
-  │  Emulator   │ ──────▶│  ODT Monitor│ ──────▶│Options Menu │
-  │  (running)  │        │  (CPU halt) │        │             │
-  └─────────────┘        └─────────────┘        └─────────────┘
-         ▲                     │  Esc                  │  Esc / G0
-         └─────────────────────┴───────────────────────┘
-                              Resume
+  ┌─────────────┐   G0   ┌─────────────┐
+  │  Emulator   │ ──────▶│Options Menu │
+  │  (running)  │        │             │
+  └─────────────┘        └─────────────┘
+         ▲                     │  Esc / G0
+         └─────────────────────┘
+              (CPU resumes)
 ```
-
-| From state | Press | Result |
-|---|---|---|
-| **Emulator** | `G0` | CPU halts → enters ODT monitor |
-| **ODT Monitor** | `G0` | Opens Options Menu (CPU stays halted) |
-| **ODT Monitor** | `Esc` or `P` | Resumes emulation (CPU un-halts) |
-| **Options Menu** | `Esc` or `G0` | Saves settings, resumes emulation |
 
 ### Emulator — PDP-11 Terminal
 
@@ -162,41 +173,31 @@ It cycles through three states:
 | `Enter` | Sends CR (0x0D) |
 | `Tab` | Sends HT (0x09) |
 
-### ODT Monitor — Commands
+### HALT behaviour
 
-The ODT prompt is `@`. Commands follow standard PDP-11 ODT syntax:
+When the PDP-11 executes a `HALT` instruction in kernel mode:
+- The CPU enters wait state (emulation pauses)
+- Register state is printed to USB serial for debugging
+- Press **G0** to open the Options Menu (and optionally reset the machine)
 
-| Input | Effect |
-|---|---|
-| `nnnnnn/` | Open memory address *nnnnnn* (octal), display its value |
-| `Rn/` | Open register Rn (R0–R7) |
-| `RS/` | Open Processor Status Word (PSW) |
-| `value CR` | Write *value* to the open location and close it |
-| `value LF` (`.`) | Write *value* and advance to next location |
-| `CR` (empty) | Close location without writing |
-| `G` / `nnnG` | Go: resume from current PC (or set PC=*nnn* first) |
-| `P` | Proceed: resume execution at current PC |
-| `Esc` | Resume execution without changing any register |
-
-See [`docs/ODT_Guide.md`](docs/ODT_Guide.md) for a full command reference
-and worked examples with machine-code programs.
+> A hardware-faithful F-11 ODT console interface (PDP-11/23 mode) is planned
+> for a future version.
 
 ---
 
 ## Options Menu
 
-Press `G0` while in ODT monitor to open the options menu (CPU remains halted):
-
 | Option | Values |
 |--------|--------|
-| **Disk Image** | Choose from all `.rk05` / `.rl0x` images found on SD |
-| **Text Colour** | Green (phosphor) · Amber · White · Paper (light on dark) |
+| **Disk Image** | All `.rk05` / `.rl0x` images found under `/pdp11/` |
+| **CPU Model** | PDP-11/40 (18-bit) · PDP-11/23 (22-bit F-11) |
+| **Text Colour** | Green (phosphor) · Amber · White · Paper |
 | **Brightness** | 5 levels (20 % – 100 %) |
-| **System Info** | Version, free RAM, SD total/used |
+| **System Info** | Version, CPU model, free RAM, SD total/used |
 | **Battery Status** | Estimated level and voltage |
-| **System Reset** | Soft-reboot PDP-11 with the currently selected disk |
+| **System Reset** | Soft-reboot PDP-11 with current disk |
 
-Settings are saved to **NVS** (non-volatile storage) and restored on next boot.
+Settings are saved to **NVS** and restored on next boot.
 
 ---
 
@@ -207,8 +208,8 @@ cardpPDP11/
 ├── src/              ← All C++ source files (PlatformIO build)
 │   ├── main.cpp      ← Arduino setup(), display canvas, SD scan
 │   ├── avr11.cpp     ← Main emulator loop, keyboard polling
-│   ├── kb11.cpp/h    ← PDP-11 CPU (instruction decode & execute)
-│   ├── unibus.cpp/h  ← Unibus address space
+│   ├── kb11.cpp/h    ← PDP-11 CPU (instruction decode & execute, MFPT, reset)
+│   ├── unibus.cpp/h  ← Unibus / Q-Bus address space
 │   ├── kl11.cpp/h    ← Console serial (KL11)
 │   ├── dl11.cpp/h    ← Secondary serial (DL11)
 │   ├── rk11.cpp/h    ← RK11 disk controller
@@ -216,17 +217,37 @@ cardpPDP11/
 │   ├── fp11.cpp      ← FP11 floating-point unit
 │   ├── kt11.cpp/h    ← KT11 memory management unit
 │   ├── kw11.cpp/h    ← KW11-L line clock
-│   ├── options.cpp/h ← Settings menu, ODT monitor, NVS persistence
-│   └── ...
+│   └── options.cpp/h ← Settings menu, NVS persistence
 ├── Images/           ← SIMH-compatible disk images for the SD card
+│   ├── Empty_RK05.dsk
+│   ├── Empty_RL01.dsk
+│   ├── pdp11-40/     ← 18-bit OS images (PDP-11/40)
+│   └── pdp11-23/     ← 22-bit OS images (PDP-11/23, need >248 KB RAM)
 ├── docs/             ← Additional documentation
-│   ├── UPSTREAM_README.md  ← Original M5Core2 README (Ian Schofield)
-│   ├── Readme.Ultrix       ← Ultrix-11 setup and multi-volume notes
-│   └── Readme.os           ← Full list of tested OS images
-├── tools/
-│   └── patch_options.py    ← Dev utility for code instrumentation
+│   ├── UPSTREAM_README.md
+│   ├── Readme.Ultrix
+│   └── Readme.os
 └── platformio.ini    ← PlatformIO build configuration
 ```
+
+---
+
+## Changelog
+
+### v0.1.2
+- **feat:** CPU model selector — choose between PDP-11/40 (18-bit) and PDP-11/23 (22-bit F-11) from the Options Menu
+- **fix:** RL11 boot ROM had wrong CSR address (`0174400` → `0774400`); RL02/RL01 images now boot correctly
+- **fix:** Boot disk verification now checks the actual boot file (RL when booting RL) instead of always checking RK
+- **refactor:** Disk images moved to `/pdp11/` on SD card; recursive scan supports subdirectories (`pdp11-40/`, `pdp11-23/`)
+- **refactor:** Remove custom ODT monitor (pending hardware-faithful F-11 ODT implementation)
+- **refactor:** G0 button opens Options Menu directly (no intermediate ODT layer)
+
+### v0.1.1
+- ODT-style monitor mode (register/memory inspect and modify)
+- Persistent settings via NVS
+
+### v0.1.0
+- Initial port from M5Stack Core2 to Cardputer
 
 ---
 
@@ -234,14 +255,14 @@ cardpPDP11/
 
 - **Ian Schofield** ([@Isysxp](https://github.com/Isysxp)) — M5Stack Core2 port,
   based on his [Pico_1140](https://github.com/Isysxp/Pico_1140) project (RP2040).
-- **Álvaro Ramos** ([@alvaroramosf](https://github.com/alvaroramosf)) — port to the
-  M5Stack Cardputer: PlatformIO migration, keyboard/display adaptation, ODT monitor,
-  settings menu, and Cardputer-specific optimizations.
+- **Álvaro Ramos** ([@alvaroramosf](https://github.com/alvaroramosf)) — port to
+  M5Stack Cardputer: PlatformIO migration, keyboard/display adaptation,
+  CPU model selection, settings menu, and Cardputer-specific optimizations.
 - **Dave Cheney** — [avr11](https://github.com/dchest/avr11), the PDP-11 emulation
   core for ATmega2560 that this project descends from (via cpp11 → Pico_1140).
 - **Julius Schmidt** — original JavaScript PDP-11 simulator that inspired avr11.
-- Disk images are compatible with **SIMH** (Bob Supnik et al.) but the emulation
-  core is an independent implementation, not a SIMH port.
+- Disk images are compatible with **SIMH** but the emulation core is an
+  independent implementation, not a SIMH port.
 
 ---
 
