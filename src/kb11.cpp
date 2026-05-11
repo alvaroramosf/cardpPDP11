@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include "bootrom.h"
 #include "kb11.h"
+#include "options.h"
 
 /*
             ***** Update 1/3/2023 ISS *****
@@ -32,8 +33,7 @@ void KB11::reset(uint16_t start,int bootdev) {
     if (bootdev)
         unibus.rl11.loadboot();           // Overlay RK05 boot with RL boot
     // In PDP-11/23 mode, enable 22-bit MMU from the start (F-11 default)
-    extern struct EmulatorOptions current_options;
-    if (current_options.cpu_model == 1) { // CPU_PDP1123
+    if (current_options.cpu_model == CPU_PDP1123) {
         mmu.SR[3] = 020; // Enable 22-bit addressing
     }
     R[7] = start;
@@ -419,8 +419,7 @@ void KB11::RTS(const uint16_t instr) {
 // Returns processor type: PDP-11/23 (F-11) returns 1 in R0.
 // PDP-11/40 does not have MFPT; executing it traps to vector 010.
 void KB11::MFPT() {
-    extern struct EmulatorOptions current_options;
-    if (current_options.cpu_model == 1) { // CPU_PDP1123
+    if (current_options.cpu_model == CPU_PDP1123) {
         R[0] = 1;   // F-11 chip identifier
     } else {
         trap(010);  // PDP-11/40: MFPT is an illegal instruction

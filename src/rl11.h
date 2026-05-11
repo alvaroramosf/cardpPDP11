@@ -67,7 +67,7 @@ static inline uint16_t boot_rom[] = {
     0012700, 0000000,               /* MOV #unit, R0 */
     0010003,                        /* MOV R0, R3 */
     0000303,                        /* SWAB R3 */
-    0012701, 0774400,               /* MOV #RLCS, R1        ; csr */
+    0012701, 0174400,               /* MOV #RLCS, R1        ; csr (16-bit virt I/O addr) */
     0012761, 0000013, 0000004,      /* MOV #13, 4(R1)       ; clr err */
     0052703, 0000004,               /* BIS #4, R3           ; unit+gstat */
     0010311,                        /* MOV R3, (R1)         ; issue cmd */
